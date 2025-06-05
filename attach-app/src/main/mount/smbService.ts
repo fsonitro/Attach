@@ -174,6 +174,102 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     }
 };
 
+// Function to check if a mount point is still accessible/mounted
+export const isMountPointAccessible = async (mountPoint: string): Promise<boolean> => {
+    try {
+        // Check if the mount point exists and is accessible
+        await execPromise(`test -d "${mountPoint}" && ls "${mountPoint}" > /dev/null 2>&1`, { timeout: 5000 });
+        return true;
+    } catch (error) {
+        console.warn(`Mount point not accessible: ${mountPoint}`);
+        return false;
+    }
+};
+
+// Function to check if a directory is actually a mount point (not just a regular directory)
+export const isMountPoint = async (path: string): Promise<boolean> => {
+    try {
+        // Use mount command to check if this path is a mount point
+        const result = await execPromise(`mount | grep "${path}"`, { timeout: 5000 });
+        return result.stdout.trim().length > 0;
+    } catch (error) {
+        return false;
+    }
+};
+
+// Function to clean up orphaned mount directories
+export const cleanupOrphanedMountDirs = async (): Promise<string[]> => {
+    const cleanedUpDirs: string[] = [];
+    const mountsDir = `${process.env.HOME}/mounts`;
+    
+    try {
+        // Check if mounts directory exists
+        await execPromise(`test -d "${mountsDir}"`);
+        
+        // Get list of directories in mounts folder
+        const result = await execPromise(`find "${mountsDir}" -maxdepth 1 -type d -not -path "${mountsDir}"`, { timeout: 10000 });
+        const mountDirs = result.stdout.trim().split('\n').filter(dir => dir.length > 0);
+        
+        for (const dir of mountDirs) {
+            // Check if this directory is still a valid mount point
+            const isStillMounted = await isMountPoint(dir);
+            const isAccessible = await isMountPointAccessible(dir);
+            
+            if (!isStillMounted || !isAccessible) {
+                try {
+                    // Try to unmount if it's still showing as mounted but not accessible
+                    if (isStillMounted && !isAccessible) {
+                        console.log(`Attempting to unmount orphaned mount: ${dir}`);
+                        await execPromise(`umount -f "${dir}"`, { timeout: 10000 });
+                    }
+                    
+                    // Remove the empty directory
+                    await execPromise(`rmdir "${dir}"`, { timeout: 5000 });
+                    cleanedUpDirs.push(dir);
+                    console.log(`Cleaned up orphaned mount directory: ${dir}`);
+                } catch (cleanupError) {
+                    console.warn(`Failed to clean up directory ${dir}:`, cleanupError);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to cleanup orphaned mount directories:', error);
+    }
+    
+    return cleanedUpDirs;
+};
+
+// Function to validate and refresh mount status
+export const validateMountedShares = async (mountedShares: Map<string, any>): Promise<string[]> => {
+    const disconnectedShares: string[] = [];
+    
+    for (const [label, share] of mountedShares.entries()) {
+        const isAccessible = await isMountPointAccessible(share.mountPoint);
+        const isStillMounted = await isMountPoint(share.mountPoint);
+        
+        if (!isAccessible || !isStillMounted) {
+            console.log(`Share ${label} is no longer accessible, removing from list`);
+            disconnectedShares.push(label);
+            
+            // Try to clean up the mount point if it exists
+            try {
+                if (!isStillMounted) {
+                    // If not mounted but directory exists, remove it
+                    await execPromise(`test -d "${share.mountPoint}" && rmdir "${share.mountPoint}"`, { timeout: 5000 });
+                } else {
+                    // If still mounted but not accessible, try to unmount
+                    await execPromise(`umount -f "${share.mountPoint}"`, { timeout: 10000 });
+                    await execPromise(`rmdir "${share.mountPoint}"`, { timeout: 5000 });
+                }
+            } catch (cleanupError) {
+                console.warn(`Failed to cleanup disconnected share ${label}:`, cleanupError);
+            }
+        }
+    }
+    
+    return disconnectedShares;
+};
+
 // Function to unmount an SMB share
 export const unmountSMBShare = async (mountPoint: string): Promise<void> => {
     // Update validation to accept both old /Volumes/ paths and new ~/mounts/ paths
@@ -205,24 +301,36 @@ export const unmountSMBShare = async (mountPoint: string): Promise<void> => {
         }
     }
     
-    // Clean up the mount point directory
+    // Clean up the mount point directory - ensure it's completely removed
     try {
-        await execPromise(`rmdir "${mountPoint}"`);
-        console.log(`Cleaned up mount point: ${mountPoint}`);
-    } catch (cleanupError) {
-        // Only try with sudo if it's an old /Volumes/ mount
-        if (mountPoint.startsWith('/Volumes/')) {
+        // First check if directory exists and is empty
+        await execPromise(`test -d "${mountPoint}"`, { timeout: 5000 });
+        
+        // Try to remove it - first check if it's empty
+        try {
+            await execPromise(`rmdir "${mountPoint}"`, { timeout: 5000 });
+            console.log(`Cleaned up mount point: ${mountPoint}`);
+        } catch (rmdirError) {
+            // If rmdir fails, the directory might not be empty, try a more forceful approach
+            console.warn(`rmdir failed, checking directory contents: ${mountPoint}`);
             try {
-                await execPromise(`sudo rmdir "${mountPoint}"`);
-                console.log(`Cleaned up mount point with sudo: ${mountPoint}`);
-            } catch (sudoCleanupError) {
-                console.warn(`Failed to clean up mount point directory: ${mountPoint}`);
-                // Don't throw here as the unmount was successful
+                const contents = await execPromise(`ls -la "${mountPoint}"`, { timeout: 5000 });
+                console.log(`Directory contents:`, contents.stdout);
+                
+                // If directory is not empty, something is wrong, but we'll try to remove it anyway
+                if (mountPoint.startsWith('/Volumes/')) {
+                    await execPromise(`sudo rm -rf "${mountPoint}"`, { timeout: 10000 });
+                } else {
+                    await execPromise(`rm -rf "${mountPoint}"`, { timeout: 10000 });
+                }
+                console.log(`Force cleaned up mount point: ${mountPoint}`);
+            } catch (forceCleanupError) {
+                console.warn(`Failed to force cleanup mount point: ${mountPoint}`, forceCleanupError);
             }
-        } else {
-            console.warn(`Failed to clean up mount point directory: ${mountPoint}`);
-            // Don't throw here as the unmount was successful
         }
+    } catch (testError) {
+        // Directory doesn't exist, which is fine
+        console.log(`Mount point directory already removed: ${mountPoint}`);
     }
 };
 

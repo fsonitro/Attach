@@ -1,17 +1,45 @@
-// filepath: /Users/felipe/Documents/dev/Attach/attach-app/src/main/index.ts
 // Main entry point for the Electron application - handles app lifecycle and IPC communication
 
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { createTray, updateTrayMenu } from './tray';
 import { createMainWindow, showMainWindow, createMountWindow } from './windows';
-import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials } from './mount/smbService';
+import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs } from './mount/smbService';
 import { readDirectoryContents } from './mount/fileSystem';
 import { MountedShare, MountResult, UnmountResult } from '../types';
 
 // Global state to track mounted shares
 let mountedShares: Map<string, MountedShare> = new Map();
 let mainWindow: BrowserWindow | null = null;
+let shareValidationInterval: NodeJS.Timeout | null = null;
+
+// Function to validate and refresh mounted shares
+async function refreshMountedShares() {
+    try {
+        // First, clean up any orphaned mount directories
+        const cleanedDirs = await cleanupOrphanedMountDirs();
+        if (cleanedDirs.length > 0) {
+            console.log(`Cleaned up ${cleanedDirs.length} orphaned mount directories`);
+        }
+        
+        // Validate currently tracked shares
+        const disconnectedShares = await validateMountedShares(mountedShares);
+        
+        // Remove disconnected shares from our tracking
+        for (const label of disconnectedShares) {
+            mountedShares.delete(label);
+            console.log(`Removed disconnected share: ${label}`);
+        }
+        
+        // Update tray menu if any shares were disconnected
+        if (disconnectedShares.length > 0) {
+            updateTrayMenu(mountedShares);
+            console.log(`Updated tray menu after removing ${disconnectedShares.length} disconnected shares`);
+        }
+    } catch (error) {
+        console.warn('Error during share validation:', error);
+    }
+}
 
 // App ready handler
 app.whenReady().then(() => {
@@ -26,6 +54,12 @@ app.whenReady().then(() => {
     
     // Set up IPC handlers
     setupIpcHandlers();
+    
+    // Start periodic validation of mounted shares (every 30 seconds)
+    shareValidationInterval = setInterval(refreshMountedShares, 30000);
+    
+    // Run initial cleanup
+    refreshMountedShares();
     
     console.log('Attach app is ready!');
 });
@@ -224,10 +258,36 @@ function setupIpcHandlers() {
             return null;
         }
     });
+
+    // Manual cleanup of orphaned mounts
+    ipcMain.handle('cleanup-orphaned-mounts', async (event): Promise<{success: boolean, cleanedCount: number, message: string}> => {
+        try {
+            const cleanedDirs = await cleanupOrphanedMountDirs();
+            await refreshMountedShares(); // Refresh the current state
+            
+            return {
+                success: true,
+                cleanedCount: cleanedDirs.length,
+                message: `Cleaned up ${cleanedDirs.length} orphaned mount directories`
+            };
+        } catch (error) {
+            console.error('Failed to cleanup orphaned mounts:', error);
+            return {
+                success: false,
+                cleanedCount: 0,
+                message: `Failed to cleanup orphaned mounts: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+        }
+    });
 }
 
 // Handle app termination
 app.on('before-quit', async () => {
+    // Clear the validation interval
+    if (shareValidationInterval) {
+        clearInterval(shareValidationInterval);
+    }
+    
     // Unmount all shares before quitting
     console.log('App is quitting, unmounting all shares...');
     for (const [label, share] of mountedShares.entries()) {

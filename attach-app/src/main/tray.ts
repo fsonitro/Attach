@@ -108,6 +108,24 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 }
             }
         },
+        {
+            label: 'Cleanup Orphaned Mounts',
+            click: async () => {
+                try {
+                    console.log('Manual cleanup triggered from tray');
+                    // Import the cleanup function and call it directly
+                    const { cleanupOrphanedMountDirs } = require('./mount/smbService');
+                    const cleanedDirs = await cleanupOrphanedMountDirs();
+                    if (cleanedDirs.length > 0) {
+                        console.log(`Manually cleaned up ${cleanedDirs.length} orphaned mount directories`);
+                    } else {
+                        console.log('No orphaned mount directories found');
+                    }
+                } catch (error) {
+                    console.error('Failed to cleanup orphaned mounts:', error);
+                }
+            }
+        },
         { type: 'separator' },
         {
             label: 'Quit',
