@@ -8,6 +8,7 @@ import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials,
 import { readDirectoryContents } from './mount/fileSystem';
 import { connectionStore, SavedConnection } from './utils/connectionStore';
 import { createAutoMountService, AutoMountService } from './utils/autoMountService';
+import { createNetworkWatcher, NetworkWatcher } from './utils/networkWatcher';
 import { MountedShare, MountResult, UnmountResult } from '../types';
 
 // Global state to track mounted shares
@@ -15,6 +16,7 @@ let mountedShares: Map<string, MountedShare> = new Map();
 let mainWindow: BrowserWindow | null = null;
 let shareValidationInterval: NodeJS.Timeout | null = null;
 let autoMountService: AutoMountService | null = null;
+let networkWatcher: NetworkWatcher | null = null;
 let isQuitting = false;
 
 // Function to validate and refresh mounted shares
@@ -61,6 +63,43 @@ app.whenReady().then(async () => {
     
     // Initialize auto-mount service
     autoMountService = createAutoMountService(mountedShares);
+    
+    // Initialize network watcher for auto-mounting after network changes
+    networkWatcher = createNetworkWatcher(mountedShares);
+    
+    // Set up event listeners for network watcher
+    if (networkWatcher) {
+        networkWatcher.on('network-online', () => {
+            console.log('🟢 Network watcher detected network connection');
+        });
+        
+        networkWatcher.on('network-offline', () => {
+            console.log('🔴 Network watcher detected network disconnection');
+        });
+        
+        networkWatcher.on('internet-available', () => {
+            console.log('🌐 Internet connectivity restored');
+        });
+        
+        networkWatcher.on('mount-success', (result) => {
+            console.log(`✅ Auto-mount successful: ${result.connection.label}`);
+            updateTrayMenu(mountedShares);
+        });
+        
+        networkWatcher.on('mount-failed-permanently', (result) => {
+            console.log(`❌ Auto-mount failed permanently: ${result.connection.label} - ${result.error}`);
+        });
+        
+        networkWatcher.on('mounts-validated', (disconnectedShares) => {
+            if (disconnectedShares.length > 0) {
+                console.log(`🔍 Network watcher found ${disconnectedShares.length} disconnected shares`);
+                updateTrayMenu(mountedShares);
+            }
+        });
+        
+        // Start the network watcher service
+        await networkWatcher.start();
+    }
     
     // Start periodic validation of mounted shares (every 30 seconds)
     shareValidationInterval = setInterval(refreshMountedShares, 30000);
@@ -466,6 +505,75 @@ function setupIpcHandlers() {
             };
         }
     });
+
+    // Get network status from NetworkWatcher
+    ipcMain.handle('get-network-status', async (event) => {
+        if (!networkWatcher) {
+            return {
+                isOnline: false,
+                hasNetworkConnectivity: false,
+                canReachGateway: false,
+                lastChecked: new Date()
+            };
+        }
+        return networkWatcher.getNetworkStatus();
+    });
+
+    // Force network check and auto-mount attempt
+    ipcMain.handle('force-network-check', async (event): Promise<{success: boolean, message: string}> => {
+        if (!networkWatcher) {
+            return {
+                success: false,
+                message: 'Network watcher service not available'
+            };
+        }
+        
+        try {
+            const status = await networkWatcher.checkNetworkStatus();
+            if (status.isOnline) {
+                await networkWatcher.performInitialAutoMount();
+                updateTrayMenu(mountedShares);
+                return {
+                    success: true,
+                    message: 'Network check completed and auto-mount attempted'
+                };
+            } else {
+                return {
+                    success: false,
+                    message: 'Network is not available'
+                };
+            }
+        } catch (error) {
+            console.error('Failed to force network check:', error);
+            return {
+                success: false,
+                message: `Network check failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+        }
+    });
+
+    // Restart network watcher service
+    ipcMain.handle('restart-network-watcher', async (event): Promise<{success: boolean, message: string}> => {
+        try {
+            if (networkWatcher) {
+                networkWatcher.stop();
+            }
+            
+            networkWatcher = createNetworkWatcher(mountedShares);
+            await networkWatcher.start();
+            
+            return {
+                success: true,
+                message: 'Network watcher service restarted successfully'
+            };
+        } catch (error) {
+            console.error('Failed to restart network watcher:', error);
+            return {
+                success: false,
+                message: `Failed to restart network watcher: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+        }
+    });
 }
 
 // Handle app termination
@@ -478,6 +586,11 @@ app.on('before-quit', async (event) => {
         // Clear the validation interval
         if (shareValidationInterval) {
             clearInterval(shareValidationInterval);
+        }
+        
+        // Stop network watcher service
+        if (networkWatcher) {
+            networkWatcher.stop();
         }
         
         // Unmount all shares before quitting
