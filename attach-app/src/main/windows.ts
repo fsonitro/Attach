@@ -6,6 +6,31 @@ import path from 'path';
 let mainWindow: BrowserWindow | null = null;
 let mountWindow: BrowserWindow | null = null;
 
+// Helper function to get the correct path for different environments
+function getResourcePath(relativePath: string): string {
+    if (app.isPackaged) {
+        // In packaged app, resources are in the app bundle
+        return path.join(process.resourcesPath, 'app.asar.unpacked', relativePath);
+    } else {
+        // In development, use the source path
+        return path.join(process.cwd(), relativePath);
+    }
+}
+
+function getRendererPath(htmlPath: string): string {
+    let resolvedPath: string;
+    if (app.isPackaged) {
+        // In packaged app, __dirname is /dist/main inside asar, HTML files are at /src/
+        resolvedPath = path.join(__dirname, '..', '..', 'src', htmlPath);
+    } else {
+        // In development, use the source path
+        resolvedPath = path.join(process.cwd(), 'src', htmlPath);
+    }
+    
+    console.log(`getRendererPath: htmlPath=${htmlPath}, __dirname=${__dirname}, app.isPackaged=${app.isPackaged}, resolvedPath=${resolvedPath}`);
+    return resolvedPath;
+}
+
 export const createMainWindow = () => {
     if (mainWindow) {
         mainWindow.show();
@@ -17,23 +42,51 @@ export const createMainWindow = () => {
         width: 300,
         height: 300,
         webPreferences: {
-            preload: path.join(process.cwd(), 'dist/preload/index.js'),
+            preload: app.isPackaged 
+                ? path.join(__dirname, '../preload/index.js')
+                : path.join(process.cwd(), 'dist/preload/index.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
-        resizable: false,
-        titleBarStyle: 'hiddenInset',
-        show: true, // Show immediately
+        resizable: true,
+        frame: true, // Enable native frame with controls
+        transparent: false, // Disable transparency for native look
+        titleBarStyle: 'default',
+        show: false, // Start hidden for smooth entrance animation
         skipTaskbar: false,
+        vibrancy: 'sidebar', // More subtle vibrancy for native windows
+        visualEffectState: 'active',
+        title: 'Attach - Network Share Mounter',
+        minimizable: true,
+        maximizable: true,
+        closable: true,
     });
 
     // Load a simple HTML page for the main window
-    mainWindow.loadFile(path.join(process.cwd(), 'src/renderer/main/index.html'));
+    mainWindow.loadFile(getRendererPath('renderer/main/index.html'));
 
-    // Handle window closed - hide instead of quit
+    // Show window with smooth entrance animation
+    mainWindow.once('ready-to-show', () => {
+        mainWindow?.show();
+        
+        // Add entrance animation
+        mainWindow?.setOpacity(0);
+        let opacity = 0;
+        const fadeIn = setInterval(() => {
+            opacity += 0.1;
+            mainWindow?.setOpacity(opacity);
+            if (opacity >= 1) {
+                clearInterval(fadeIn);
+            }
+        }, 20);
+    });
+
+    // Handle window closed - hide instead of quit on normal close, but allow force quit
     mainWindow.on('close', (event) => {
-        event.preventDefault();
-        mainWindow?.hide();
+        if (!(global as any).isQuitting) {
+            event.preventDefault();
+            mainWindow?.hide();
+        }
     });
 
     mainWindow.on('closed', () => {
@@ -56,6 +109,14 @@ export const hideMainWindow = () => {
     mainWindow?.hide();
 };
 
+export const quitApplication = () => {
+    (global as any).isQuitting = true;
+    if (mainWindow) {
+        mainWindow.destroy();
+    }
+    app.quit();
+};
+
 export const createMountWindow = () => {
     if (mountWindow) {
         mountWindow.focus();
@@ -64,18 +125,48 @@ export const createMountWindow = () => {
 
     mountWindow = new BrowserWindow({
         width: 400,
-        height: 300,
+        height: 350,
         webPreferences: {
-            preload: path.join(process.cwd(), 'dist/preload/index.js'),
+            preload: app.isPackaged 
+                ? path.join(__dirname, '../preload/index.js')
+                : path.join(process.cwd(), 'dist/preload/index.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
         resizable: false,
+        frame: true, // Enable native frame
+        transparent: false,
         modal: true,
         parent: mainWindow || undefined,
+        show: false, // Start hidden for animation
+        vibrancy: 'sidebar',
+        visualEffectState: 'active',
+        title: 'Mount Network Share',
+        minimizable: false,
+        maximizable: false,
+        closable: true,
     });
 
-    mountWindow.loadFile(path.join(process.cwd(), 'src/renderer/mount/index.html'));
+    mountWindow.loadFile(getRendererPath('renderer/mount/index.html'));
+
+    // Show with animation
+    mountWindow.once('ready-to-show', () => {
+        mountWindow?.show();
+        
+        // Scale entrance animation
+        mountWindow?.setOpacity(0);
+        let scale = 0.8;
+        let opacity = 0;
+        const animate = setInterval(() => {
+            scale += 0.02;
+            opacity += 0.1;
+            mountWindow?.setOpacity(opacity);
+            // Note: setSize for scale effect would need bounds calculation
+            if (opacity >= 1 && scale >= 1) {
+                clearInterval(animate);
+            }
+        }, 16); // ~60fps
+    });
 
     mountWindow.on('closed', () => {
         mountWindow = null;

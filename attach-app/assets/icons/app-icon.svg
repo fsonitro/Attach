@@ -1,0 +1,42 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="networkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#mainGradient)" stroke="#E5E7EB" stroke-width="8"/>
+  
+  <!-- Network/Folder icon -->
+  <g transform="translate(156, 180)">
+    <!-- Folder base -->
+    <path d="M0 40 L160 40 L180 60 L180 140 L0 140 Z" fill="url(#networkGradient)" stroke="#047857" stroke-width="4"/>
+    <!-- Folder tab -->
+    <path d="M0 20 L60 20 L80 40 L0 40 Z" fill="url(#networkGradient)" stroke="#047857" stroke-width="4"/>
+  </g>
+  
+  <!-- Connection/Mount symbol -->
+  <g transform="translate(256, 320)">
+    <!-- Connection line -->
+    <line x1="-80" y1="0" x2="80" y2="0" stroke="#F59E0B" stroke-width="12" stroke-linecap="round"/>
+    <!-- Left connector -->
+    <circle cx="-80" cy="0" r="16" fill="#F59E0B"/>
+    <!-- Right connector -->
+    <circle cx="80" cy="0" r="16" fill="#F59E0B"/>
+    <!-- Center hub -->
+    <circle cx="0" cy="0" r="20" fill="#DC2626" stroke="#FFFFFF" stroke-width="4"/>
+  </g>
+  
+  <!-- Small network indicators -->
+  <g transform="translate(320, 160)">
+    <circle cx="0" cy="0" r="8" fill="#10B981" opacity="0.8"/>
+    <circle cx="20" cy="15" r="6" fill="#10B981" opacity="0.6"/>
+    <circle cx="-15" cy="20" r="6" fill="#10B981" opacity="0.6"/>
+  </g>
+</svg>

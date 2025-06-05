@@ -12,6 +12,7 @@ import { MountedShare, MountResult, UnmountResult } from '../types';
 let mountedShares: Map<string, MountedShare> = new Map();
 let mainWindow: BrowserWindow | null = null;
 let shareValidationInterval: NodeJS.Timeout | null = null;
+let isQuitting = false;
 
 // Function to validate and refresh mounted shares
 async function refreshMountedShares() {
@@ -219,6 +220,13 @@ function setupIpcHandlers() {
         // This would be handled by the window itself
     });
 
+    // Close main window
+    ipcMain.handle('close-main-window', async (event) => {
+        if (mainWindow) {
+            mainWindow.hide();
+        }
+    });
+
     // Open folder in Finder
     ipcMain.handle('open-in-finder', async (event, folderPath: string) => {
         try {
@@ -282,20 +290,34 @@ function setupIpcHandlers() {
 }
 
 // Handle app termination
-app.on('before-quit', async () => {
-    // Clear the validation interval
-    if (shareValidationInterval) {
-        clearInterval(shareValidationInterval);
-    }
-    
-    // Unmount all shares before quitting
-    console.log('App is quitting, unmounting all shares...');
-    for (const [label, share] of mountedShares.entries()) {
-        try {
-            await unmountSMBShare(share.mountPoint);
-            console.log(`Unmounted ${share.sharePath}`);
-        } catch (error) {
-            console.error(`Failed to unmount ${share.sharePath}:`, error);
+app.on('before-quit', async (event) => {
+    if (!isQuitting) {
+        event.preventDefault();
+        isQuitting = true;
+        (global as any).isQuitting = true;
+        
+        // Clear the validation interval
+        if (shareValidationInterval) {
+            clearInterval(shareValidationInterval);
         }
+        
+        // Unmount all shares before quitting
+        console.log('App is quitting, unmounting all shares...');
+        for (const [label, share] of mountedShares.entries()) {
+            try {
+                await unmountSMBShare(share.mountPoint);
+                console.log(`Unmounted ${share.sharePath}`);
+            } catch (error) {
+                console.error(`Failed to unmount ${share.sharePath}:`, error);
+            }
+        }
+        
+        // Now actually quit
+        app.quit();
     }
+});
+
+// Ensure proper cleanup when the app is about to exit
+app.on('will-quit', () => {
+    console.log('App is exiting...');
 });

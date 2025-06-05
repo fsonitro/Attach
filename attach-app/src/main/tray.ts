@@ -1,15 +1,20 @@
 // src/main/tray.ts
 import { app, Tray, Menu, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
-import { showMainWindow, createMountWindow } from './windows';
+import { showMainWindow, createMountWindow, quitApplication } from './windows';
 
 let tray: Tray | null = null;
 let mountedShares: Map<string, any> = new Map(); // We'll update this from main process
 
 export function createTray(mainWindow: BrowserWindow) {
-    // Use template icon for better macOS integration
-    const iconPath = path.join(process.cwd(), 'assets', 'icons', 'tray-icon-template.png');
+    // Use folders icon for tray (22x22 optimized size with template for theme adaptation)
+    const iconPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'icons', 'folders-tray-template.png')
+        : path.join(process.cwd(), 'assets', 'icons', 'folders-tray-template.png');
     tray = new Tray(iconPath);
+    
+    // Set as template image for automatic light/dark theme adaptation
+    tray.setImage(iconPath);
     
     // This makes the icon adapt to light/dark themes properly
     tray.setTitle('');
@@ -18,14 +23,8 @@ export function createTray(mainWindow: BrowserWindow) {
 
     tray.setToolTip('Attach - Network Share Mounter');
 
-    // Show/hide main window on tray click
-    tray.on('click', () => {
-        if (mainWindow.isVisible()) {
-            mainWindow.hide();
-        } else {
-            showMainWindow();
-        }
-    });
+    // Tray icon click behavior is disabled - users must use the "Show App" menu option
+    // This prevents accidental window opening when clicking the tray icon
 
     return tray;
 }
@@ -130,7 +129,7 @@ export function updateTrayMenu(shares?: Map<string, any>) {
         {
             label: 'Quit',
             click: () => {
-                app.quit();
+                quitApplication();
             }
         }
     ]);

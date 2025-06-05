@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.invoke('open-mount-window'),
     closeMountWindow: () => 
         ipcRenderer.invoke('close-mount-window'),
+    closeMainWindow: () => 
+        ipcRenderer.invoke('close-main-window'),
         
     // Folder operations (for future use)
     openInFinder: (path: string) => 

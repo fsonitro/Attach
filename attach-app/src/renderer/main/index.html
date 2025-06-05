@@ -4,74 +4,102 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attach - Network Share Mounter</title>
-    <link rel="stylesheet" href="../shared/styles.css">
     <style>
-        body {
+        * {
+            box-sizing: border-box;
             margin: 0;
-            padding: 20px;
+            padding: 0;
+        }
+        
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+            height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: calc(100vh - 40px);
+            overflow: hidden;
+        }
+        
+        .container {
             text-align: center;
+            padding: 20px;
         }
         
         .logo {
-            font-size: 24px;
+            font-size: 32px;
             font-weight: bold;
             margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
         }
         
         .subtitle {
             font-size: 14px;
             opacity: 0.8;
             margin-bottom: 20px;
-        }
-        
-        .status {
-            font-size: 12px;
-            opacity: 0.6;
+            text-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
         }
         
         .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
             margin-top: 20px;
         }
         
         button {
-            background: rgba(255,255,255,0.2);
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
             border: 1px solid rgba(255,255,255,0.3);
             color: white;
-            padding: 8px 16px;
-            border-radius: 6px;
+            padding: 12px 24px;
+            border-radius: 25px;
             cursor: pointer;
             font-size: 12px;
-            margin: 0 5px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
         
         button:hover {
-            background: rgba(255,255,255,0.3);
+            background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.2) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .mount-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .mount-btn:hover {
+            background: linear-gradient(135deg, #7c8ef5 0%, #8a5cb7 100%);
         }
     </style>
 </head>
 <body>
-    <div class="logo">📁 Attach</div>
-    <div class="subtitle">Network Share Mounter</div>
-    <div class="status">Ready to mount network shares</div>
-    
-    <div class="controls">
-        <button onclick="openMounter()">Mount Share</button>
-        <button onclick="openFolder()">Open Folder</button>
+    <div class="container">
+        <div class="logo">📁 Attach</div>
+        <div class="subtitle">Network Share Mounter</div>
+        
+        <div class="controls">
+            <button class="mount-btn" onclick="openMounter()">
+                Mount Share
+            </button>
+            <button onclick="openFolder()">
+                Open Folder
+            </button>
+        </div>
     </div>
     
     <script>
         async function openMounter() {
             try {
-                await window.api.openMountWindow();
-                console.log('Mount window opened');
+                if (window.api) {
+                    await window.api.openMountWindow();
+                } else {
+                    console.log('API not available - development mode?');
+                }
             } catch (error) {
                 console.error('Failed to open mount window:', error);
             }
@@ -79,16 +107,18 @@
         
         async function openFolder() {
             try {
-                // Get mounted shares and open the first one, or show message if none
-                const shares = await window.api.getMountedShares();
-                if (shares.length > 0) {
-                    await window.api.openInFinder(shares[0].mountPoint);
+                if (window.api) {
+                    const shares = await window.api.getMountedShares();
+                    if (shares.length > 0) {
+                        await window.api.openInFinder(shares[0].mountPoint);
+                    } else {
+                        alert('No mounted shares found');
+                    }
                 } else {
-                    alert('No mounted shares found. Mount a share first!');
+                    console.log('API not available - development mode?');
                 }
             } catch (error) {
                 console.error('Failed to open folder:', error);
-                alert('Failed to open folder. Please try again.');
             }
         }
     </script>
