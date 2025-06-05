@@ -1,5 +1,5 @@
 {
-  "name": "Attach",
+  "name": "attach",
   "version": "1.0.0",
   "description": "A macOS Electron app to mount and browse network shares.",
   "main": "dist/main/index.js",

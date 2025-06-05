@@ -2,6 +2,7 @@
 import { app, Tray, Menu, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { showMainWindow, createMountWindow, quitApplication } from './windows';
+import { unmountSMBShare } from './mount/smbService';
 
 let tray: Tray | null = null;
 let mountedShares: Map<string, any> = new Map(); // We'll update this from main process
@@ -58,9 +59,14 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 label: `Unmount ${share.label}`,
                 click: async () => {
                     try {
-                        // Trigger unmount via IPC
-                        const result = await ipcMain.emit('unmount-share', null, share.label);
-                        console.log(`Unmount triggered for ${share.label}`);
+                        // Call the unmount function directly
+                        await unmountSMBShare(share.mountPoint);
+                        mountedShares.delete(share.label);
+                        
+                        // Update tray menu
+                        updateTrayMenu(mountedShares);
+                        
+                        console.log(`Successfully unmounted ${share.label}`);
                     } catch (error) {
                         console.error(`Failed to unmount ${share.label}:`, error);
                     }
@@ -99,11 +105,27 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             enabled: mountedShares.size > 0,
             click: async () => {
                 try {
-                    // Emit the unmount-all event to trigger the IPC handler
                     console.log('Unmount all triggered from tray');
-                    // We'll need to call this through the main process
+                    
+                    // Unmount all shares
+                    for (const [label, share] of mountedShares.entries()) {
+                        try {
+                            await unmountSMBShare(share.mountPoint);
+                            console.log(`Successfully unmounted ${label}`);
+                        } catch (error) {
+                            console.error(`Failed to unmount ${label}:`, error);
+                        }
+                    }
+                    
+                    // Clear all mounted shares
+                    mountedShares.clear();
+                    
+                    // Update tray menu
+                    updateTrayMenu(mountedShares);
+                    
+                    console.log('Unmount all completed');
                 } catch (error) {
-                    console.error('Failed to trigger unmount all:', error);
+                    console.error('Failed to unmount all:', error);
                 }
             }
         },

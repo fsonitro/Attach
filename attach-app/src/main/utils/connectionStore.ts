@@ -21,7 +21,7 @@ export interface ConnectionSettings {
     rememberCredentials: boolean;
 }
 
-const KEYCHAIN_SERVICE = 'attach-app';
+const KEYCHAIN_SERVICE = 'Attach';
 
 class ConnectionStore {
     private store: Store<ConnectionSettings>;
