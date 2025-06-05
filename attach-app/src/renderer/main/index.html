@@ -68,14 +68,28 @@
     </div>
     
     <script>
-        function openMounter() {
-            // This will be connected via IPC later
-            console.log('Open mounter clicked');
+        async function openMounter() {
+            try {
+                await window.api.openMountWindow();
+                console.log('Mount window opened');
+            } catch (error) {
+                console.error('Failed to open mount window:', error);
+            }
         }
         
-        function openFolder() {
-            // This will be connected via IPC later
-            console.log('Open folder clicked');
+        async function openFolder() {
+            try {
+                // Get mounted shares and open the first one, or show message if none
+                const shares = await window.api.getMountedShares();
+                if (shares.length > 0) {
+                    await window.api.openInFinder(shares[0].mountPoint);
+                } else {
+                    alert('No mounted shares found. Mount a share first!');
+                }
+            } catch (error) {
+                console.error('Failed to open folder:', error);
+                alert('Failed to open folder. Please try again.');
+            }
         }
     </script>
 </body>

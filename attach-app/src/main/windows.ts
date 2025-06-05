@@ -17,13 +17,13 @@ export const createMainWindow = () => {
         width: 300,
         height: 300,
         webPreferences: {
-            preload: path.join(__dirname, '../preload/index.js'),
+            preload: path.join(process.cwd(), 'dist/preload/index.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
         resizable: false,
         titleBarStyle: 'hiddenInset',
-        show: false, // Don't show immediately
+        show: true, // Show immediately
         skipTaskbar: false,
     });
 
@@ -66,7 +66,7 @@ export const createMountWindow = () => {
         width: 400,
         height: 300,
         webPreferences: {
-            preload: path.join(__dirname, '../preload/index.js'),
+            preload: path.join(process.cwd(), 'dist/preload/index.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },

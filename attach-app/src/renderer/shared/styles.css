@@ -1,45 +1,152 @@
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
+/* Shared Styles for Attach App */
+
+/* Reset and base styles */
+* {
     box-sizing: border-box;
 }
 
-h1, h2, h3 {
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    padding: 0;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Utility classes */
+.hidden {
+    display: none !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-white {
+    color: white;
+}
+
+/* Button base styles that can be extended */
+.btn-base {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    outline: none;
+}
+
+.btn-base:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Input base styles */
+.input-base {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.4;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-base:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Message styles */
+.message-base {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin: 8px 0;
+}
+
+.message-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message-warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.message-info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+/* Container styles */
+.container-base {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 16px;
+}
+
+/* Form styles */
+.form-base {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.form-group-base {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.form-group-base label {
+    font-size: 13px;
+    font-weight: 500;
     color: #333;
 }
 
-.container {
-    padding: 20px;
+/* Loading animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-.button {
-    background-color: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 15px;
-    border-radius: 5px;
-    cursor: pointer;
+@keyframes slideUp {
+    from { 
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.button:hover {
-    background-color: #0056b3;
+.fade-in {
+    animation: fadeIn 0.3s ease;
 }
 
-.input-field {
-    width: 100%;
-    padding: 10px;
-    margin: 10px 0;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-.error {
-    color: red;
-    font-size: 0.9em;
-}
-
-.success {
-    color: green;
-    font-size: 0.9em;
+.slide-up {
+    animation: slideUp 0.3s ease;
 }

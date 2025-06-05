@@ -3,26 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mount SMB Share</title>
+    <title>Mount Network Share</title>
     <link rel="stylesheet" href="mount.css">
+    <link rel="stylesheet" href="../shared/styles.css">
 </head>
 <body>
-    <div class="mount-container">
-        <h1>Mount SMB Share</h1>
-        <form id="mount-form">
-            <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
+    <div class="container">
+        <div class="header">
+            <h1>Mount Network Share</h1>
+            <p class="subtitle">Connect to your SMB network share</p>
+        </div>
 
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
+        <form id="mountForm" class="mount-form">
+            <div class="form-group">
+                <label for="sharePath">Share Path</label>
+                <input 
+                    type="text" 
+                    id="sharePath" 
+                    placeholder="smb://server/share or //server/share"
+                    required
+                >
+                <div class="input-hint">Example: smb://workstation/nas</div>
+            </div>
 
-            <label for="smb-path">SMB Share Path:</label>
-            <input type="text" id="smb-path" name="smb-path" placeholder="smb://Workstation/nas" required>
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input 
+                    type="text" 
+                    id="username" 
+                    placeholder="Enter your username"
+                    required
+                >
+            </div>
 
-            <button type="submit">Mount</button>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    placeholder="Enter your password"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="label">Mount Label (Optional)</label>
+                <input 
+                    type="text" 
+                    id="label" 
+                    placeholder="Custom name for this mount"
+                >
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="saveCredentials">
+                    <span class="checkmark"></span>
+                    Save credentials to Keychain
+                </label>
+            </div>
+
+            <div class="system-info">
+                <div class="info-icon">ℹ️</div>
+                <p>You may be prompted for your system password to access /Volumes/</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" id="cancelButton" class="btn btn-secondary">Cancel</button>
+                <button type="submit" id="mountButton" class="btn btn-primary">
+                    <span class="btn-text">Mount Share</span>
+                    <div class="loading-spinner" style="display: none;"></div>
+                </button>
+            </div>
         </form>
-        <div id="message"></div>
+
+        <div id="status" class="status-message" style="display: none;"></div>
     </div>
+
     <script src="mount.js"></script>
 </body>
 </html>
