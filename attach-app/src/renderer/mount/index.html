@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mount SMB Share</title>
+    <link rel="stylesheet" href="mount.css">
+</head>
+<body>
+    <div class="mount-container">
+        <h1>Mount SMB Share</h1>
+        <form id="mount-form">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+
+            <label for="smb-path">SMB Share Path:</label>
+            <input type="text" id="smb-path" name="smb-path" placeholder="smb://Workstation/nas" required>
+
+            <button type="submit">Mount</button>
+        </form>
+        <div id="message"></div>
+    </div>
+    <script src="mount.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "appId": "com.example.attachapp",
+  "productName": "Attach App",
+  "copyright": "Copyright © 2023 Your Name",
+  "version": "1.0.0",
+  "files": [
+    "dist/**/*",
+    "src/**/*",
+    "assets/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.utilities",
+    "icon": "assets/icons/tray-icon.png",
+    "target": [
+      "dmg",
+      "zip"
+    ]
+  },
+  "win": {
+    "target": [
+      "nsis"
+    ],
+    "icon": "assets/icons/tray-icon.png"
+  },
+  "linux": {
+    "target": [
+      "AppImage",
+      "deb"
+    ],
+    "icon": "assets/icons/tray-icon.png"
+  },
+  "build": {
+    "asar": true,
+    "extraResources": [
+      "assets/**/*"
+    ]
+  }
+}

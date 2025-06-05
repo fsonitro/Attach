@@ -1,0 +1,39 @@
+{
+  "name": "attach-app",
+  "version": "1.0.0",
+  "description": "A macOS Electron app to mount and browse network shares.",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build-ts": "tsc",
+    "start": "npm run build-ts && electron .",
+    "build": "npm run build-ts && electron-builder",
+    "dev": "npm run build-ts && electron . --dev",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "electron",
+    "macOS",
+    "network",
+    "shares",
+    "mount"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^31.0.0",
+    "keytar": "^7.9.0",
+    "electron-store": "^10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-loader": "^9.5.0",
+    "electron-builder": "^24.13.0"
+  },
+  "build": {
+    "appId": "com.example.attachapp",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "assets/icons/tray-icon.png"
+    }
+  }
+}
