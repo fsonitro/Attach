@@ -1,5 +1,5 @@
 {
-  "name": "attach-app",
+  "name": "Attach",
   "version": "1.0.0",
   "description": "A macOS Electron app to mount and browse network shares.",
   "main": "dist/main/index.js",
@@ -31,6 +31,7 @@
   },
   "build": {
     "appId": "com.example.attachapp",
+    "productName": "Attach",
     "files": [
       "dist/**/*",
       "src/renderer/**/*",
