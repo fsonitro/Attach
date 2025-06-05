@@ -6,12 +6,15 @@ import { createTray, updateTrayMenu } from './tray';
 import { createMainWindow, showMainWindow, createMountWindow } from './windows';
 import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs } from './mount/smbService';
 import { readDirectoryContents } from './mount/fileSystem';
+import { connectionStore, SavedConnection } from './utils/connectionStore';
+import { createAutoMountService, AutoMountService } from './utils/autoMountService';
 import { MountedShare, MountResult, UnmountResult } from '../types';
 
 // Global state to track mounted shares
 let mountedShares: Map<string, MountedShare> = new Map();
 let mainWindow: BrowserWindow | null = null;
 let shareValidationInterval: NodeJS.Timeout | null = null;
+let autoMountService: AutoMountService | null = null;
 let isQuitting = false;
 
 // Function to validate and refresh mounted shares
@@ -43,7 +46,7 @@ async function refreshMountedShares() {
 }
 
 // App ready handler
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     // Create the main window
     mainWindow = createMainWindow();
     
@@ -56,11 +59,39 @@ app.whenReady().then(() => {
     // Set up IPC handlers
     setupIpcHandlers();
     
+    // Initialize auto-mount service
+    autoMountService = createAutoMountService(mountedShares);
+    
     // Start periodic validation of mounted shares (every 30 seconds)
     shareValidationInterval = setInterval(refreshMountedShares, 30000);
     
     // Run initial cleanup
-    refreshMountedShares();
+    await refreshMountedShares();
+    
+    // Perform auto-mounting of saved connections
+    if (await connectionStore.getAutoMountEnabled()) {
+        console.log('Starting auto-mount process...');
+        try {
+            const autoMountResults = await autoMountService.autoMountConnections();
+            const summary = autoMountService.getAutoMountSummary(autoMountResults);
+            
+            console.log(`Auto-mount completed: ${summary.successful}/${summary.total} successful`);
+            
+            if (summary.successful > 0) {
+                console.log(`✅ Successfully mounted: ${summary.successfulConnections.join(', ')}`);
+                // Update tray menu with new mounts
+                updateTrayMenu(mountedShares);
+            }
+            
+            if (summary.failed > 0) {
+                console.log(`❌ Failed to mount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
+            }
+        } catch (error) {
+            console.error('Error during auto-mount process:', error);
+        }
+    } else {
+        console.log('Auto-mount is disabled');
+    }
     
     console.log('Attach app is ready!');
 });
@@ -89,18 +120,24 @@ app.on('second-instance', () => {
 // Setup IPC handlers for communication with renderer processes
 function setupIpcHandlers() {
     // Mount a network share
-    ipcMain.handle('mount-share', async (event, sharePath: string, username: string, password: string, label?: string, saveCredentials: boolean = false): Promise<MountResult> => {
+    ipcMain.handle('mount-share', async (event, sharePath: string, username: string, password: string, label?: string, saveCredentials: boolean = false, autoMount: boolean = false): Promise<MountResult> => {
         try {
             console.log(`Attempting to mount share: ${sharePath} for user: ${username}`);
             
             const mountPoint = await mountSMBShare(sharePath, username, password);
-            const mountLabel = label || `Share-${Date.now()}`;
+            const mountLabel = label || `${sharePath.split('/').pop()} (${username})`;
             
-            // Optionally store credentials securely
-            if (saveCredentials) {
+            // Save connection if credentials should be stored
+            if (saveCredentials && connectionStore.getRememberCredentials()) {
                 try {
-                    await storeCredentials(`attach-app-${sharePath}`, username, password);
-                    console.log('Credentials stored securely');
+                    const savedConnection = await connectionStore.saveConnection(
+                        sharePath, 
+                        username, 
+                        password, 
+                        mountLabel,
+                        autoMount
+                    );
+                    console.log(`Credentials stored securely for connection: ${savedConnection.id}`);
                 } catch (credError) {
                     console.warn('Failed to store credentials:', credError);
                     // Don't fail the mount if credential storage fails
@@ -250,13 +287,24 @@ function setupIpcHandlers() {
     // Get stored credentials for a share
     ipcMain.handle('get-stored-credentials', async (event, sharePath: string): Promise<{username: string, password: string} | null> => {
         try {
+            // Try to find a saved connection for this share path
+            const connection = connectionStore.findConnectionByShareAndUser(sharePath);
+            if (connection) {
+                const password = await connectionStore.getPassword(connection.id);
+                if (password) {
+                    return {
+                        username: connection.username,
+                        password: password
+                    };
+                }
+            }
+
+            // Fallback to legacy method for backwards compatibility
             const serviceKey = `attach-app-${sharePath}`;
-            // For simplicity, we'll use a fixed username key to find stored credentials
-            // In a real app, you might want to store a list of usernames per share
             const storedPassword = await getStoredCredentials(serviceKey, 'stored-user');
             if (storedPassword) {
                 return {
-                    username: 'stored-user', // This would be more sophisticated in a real app
+                    username: 'stored-user',
                     password: storedPassword
                 };
             }
@@ -264,6 +312,137 @@ function setupIpcHandlers() {
         } catch (error) {
             console.error('Failed to retrieve stored credentials:', error);
             return null;
+        }
+    });
+
+    // Connection management handlers
+    ipcMain.handle('get-saved-connections', async (event): Promise<SavedConnection[]> => {
+        return await connectionStore.getConnections();
+    });
+
+    ipcMain.handle('get-recent-connections', async (event, limit?: number): Promise<SavedConnection[]> => {
+        return await connectionStore.getRecentConnections(limit);
+    });
+
+    ipcMain.handle('get-connection-credentials', async (event, connectionId: string): Promise<{username: string, password: string} | null> => {
+        try {
+            const connection = await connectionStore.getConnection(connectionId);
+            if (!connection) {
+                return null;
+            }
+
+            const password = await connectionStore.getPassword(connectionId);
+            if (!password) {
+                return null;
+            }
+
+            return {
+                username: connection.username,
+                password: password
+            };
+        } catch (error) {
+            console.error('Failed to retrieve connection credentials:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('remove-saved-connection', async (event, connectionId: string): Promise<{success: boolean, message: string}> => {
+        try {
+            const success = await connectionStore.removeConnection(connectionId);
+            return {
+                success,
+                message: success ? 'Connection removed successfully' : 'Connection not found'
+            };
+        } catch (error) {
+            console.error('Failed to remove connection:', error);
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Unknown error occurred'
+            };
+        }
+    });
+
+    ipcMain.handle('update-connection-auto-mount', async (event, connectionId: string, autoMount: boolean): Promise<{success: boolean, message: string}> => {
+        try {
+            const connection = await connectionStore.getConnection(connectionId);
+            if (!connection) {
+                return {
+                    success: false,
+                    message: 'Connection not found'
+                };
+            }
+
+            // Update the connection with new auto-mount setting
+            await connectionStore.saveConnection(
+                connection.sharePath,
+                connection.username,
+                await connectionStore.getPassword(connectionId) || '',
+                connection.label,
+                autoMount
+            );
+
+            return {
+                success: true,
+                message: 'Auto-mount setting updated'
+            };
+        } catch (error) {
+            console.error('Failed to update auto-mount setting:', error);
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Unknown error occurred'
+            };
+        }
+    });
+
+    ipcMain.handle('mount-saved-connection', async (event, connectionId: string): Promise<MountResult> => {
+        try {
+            if (!autoMountService) {
+                throw new Error('Auto-mount service not initialized');
+            }
+
+            const result = await autoMountService.remountConnection(connectionId);
+            if (!result) {
+                throw new Error('Connection not found');
+            }
+
+            if (result.success && result.mountPoint) {
+                // Update tray menu
+                updateTrayMenu(mountedShares);
+                
+                return {
+                    success: true,
+                    message: `Successfully mounted ${result.connection.label}`,
+                    mountPoint: result.mountPoint,
+                    label: result.connection.label
+                };
+            } else {
+                return {
+                    success: false,
+                    message: result.error || 'Failed to mount connection'
+                };
+            }
+        } catch (error) {
+            console.error('Failed to mount saved connection:', error);
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Unknown error occurred'
+            };
+        }
+    });
+
+    ipcMain.handle('get-auto-mount-settings', async (event): Promise<{autoMountEnabled: boolean, rememberCredentials: boolean}> => {
+        return {
+            autoMountEnabled: await connectionStore.getAutoMountEnabled(),
+            rememberCredentials: await connectionStore.getRememberCredentials()
+        };
+    });
+
+    ipcMain.handle('update-auto-mount-settings', async (event, settings: {autoMountEnabled?: boolean, rememberCredentials?: boolean}): Promise<void> => {
+        if (settings.autoMountEnabled !== undefined) {
+            await connectionStore.setAutoMountEnabled(settings.autoMountEnabled);
+        }
+        if (settings.rememberCredentials !== undefined) {
+            await connectionStore.setRememberCredentials(settings.rememberCredentials);
         }
     });
 

@@ -15,6 +15,14 @@
 
         <form id="mountForm" class="mount-form">
             <div class="form-group">
+                <label for="savedConnections">Saved Connections (Optional)</label>
+                <select id="savedConnections" class="saved-connections-dropdown">
+                    <option value="">Select a saved connection...</option>
+                </select>
+                <div class="input-hint">Choose from previously saved connections</div>
+            </div>
+
+            <div class="form-group">
                 <label for="sharePath">Share Path</label>
                 <input 
                     type="text" 
@@ -59,6 +67,14 @@
                     <input type="checkbox" id="saveCredentials">
                     <span class="checkmark"></span>
                     Save credentials to Keychain
+                </label>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="autoMount">
+                    <span class="checkmark"></span>
+                    Auto-mount on app startup
                 </label>
             </div>
 

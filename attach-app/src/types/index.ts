@@ -37,18 +37,40 @@ export interface DirectoryEntry {
     path: string;
 }
 
+export interface SavedConnection {
+    id: string;
+    label: string;
+    sharePath: string;
+    username: string;
+    autoMount: boolean;
+    lastUsed: Date;
+    createdAt: Date;
+}
+
 // Window API types
 declare global {
     interface Window {
         api: {
             // Mount operations
-            mountShare: (sharePath: string, username: string, password: string, label?: string, saveCredentials?: boolean) => Promise<MountResult>;
+            mountShare: (sharePath: string, username: string, password: string, label?: string, saveCredentials?: boolean, autoMount?: boolean) => Promise<MountResult>;
             unmountShare: (label: string) => Promise<MountResult>;
             unmountAll: () => Promise<UnmountResult>;
             getMountedShares: () => Promise<MountedShare[]>;
             
             // Credential operations
             getStoredCredentials: (sharePath: string) => Promise<{username: string, password: string} | null>;
+            
+            // Connection management
+            getSavedConnections: () => Promise<SavedConnection[]>;
+            getRecentConnections: (limit?: number) => Promise<SavedConnection[]>;
+            getConnectionCredentials: (connectionId: string) => Promise<{username: string, password: string} | null>;
+            removeSavedConnection: (connectionId: string) => Promise<{success: boolean, message: string}>;
+            updateConnectionAutoMount: (connectionId: string, autoMount: boolean) => Promise<{success: boolean, message: string}>;
+            mountSavedConnection: (connectionId: string) => Promise<MountResult>;
+            
+            // Settings
+            getAutoMountSettings: () => Promise<{autoMountEnabled: boolean, rememberCredentials: boolean}>;
+            updateAutoMountSettings: (settings: {autoMountEnabled?: boolean, rememberCredentials?: boolean}) => Promise<void>;
             
             // Window operations
             openMountWindow: () => Promise<void>;

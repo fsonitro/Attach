@@ -334,6 +334,7 @@ export const unmountSMBShare = async (mountPoint: string): Promise<void> => {
     }
 };
 
+// Legacy functions - kept for backwards compatibility
 // Function to store credentials securely
 export const storeCredentials = async (service: string, username: string, password: string): Promise<void> => {
     await keytar.setPassword(service, username, password);
