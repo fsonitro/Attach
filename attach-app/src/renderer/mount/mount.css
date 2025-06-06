@@ -15,48 +15,9 @@ body {
     user-select: none;
 }
 
-/* macOS window chrome */
-.titlebar {
-    height: 52px;
-    background: #f6f6f6;
-    border-bottom: 1px solid #d1d1d6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    -webkit-app-region: drag;
-}
-
-.window-controls {
-    position: absolute;
-    left: 20px;
-    display: flex;
-    gap: 8px;
-    -webkit-app-region: no-drag;
-}
-
-.control-button {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
-}
-
-.close { background: #ff5f57; }
-.minimize { background: #ffbd2e; }
-.maximize { background: #28ca42; }
-
-.window-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #1d1d1f;
-    letter-spacing: -0.01em;
-}
-
 .container {
     padding: 24px 32px 32px 32px;
-    height: calc(100vh - 52px);
+    height: 100vh;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -349,15 +310,6 @@ body {
 @media (prefers-color-scheme: dark) {
     body {
         background: #1e1e1e;
-        color: #ffffff;
-    }
-    
-    .titlebar {
-        background: #1e1e1e;
-        border-bottom-color: #2c2c2e;
-    }
-    
-    .window-title {
         color: #ffffff;
     }
     
