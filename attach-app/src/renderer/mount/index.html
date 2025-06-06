@@ -38,9 +38,12 @@
                 <input 
                     type="text" 
                     id="username" 
-                    placeholder="Enter your username"
+                    placeholder="Enter your username or email address"
+                    pattern="^[a-zA-Z0-9._@-]+$"
+                    title="Username can contain letters, numbers, dots, underscores, @ symbols, and hyphens"
                     required
                 >
+                <div class="input-hint">Username or email address (e.g., user@domain.com)</div>
             </div>
 
             <div class="form-group">

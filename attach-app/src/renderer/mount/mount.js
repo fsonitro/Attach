@@ -220,4 +220,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             sharePathInput.setCustomValidity('');
         }
     });
+
+    // Add username validation to support email addresses
+    usernameInput.addEventListener('input', (e) => {
+        const value = e.target.value;
+        // Allow usernames and email addresses - alphanumeric characters, dots, underscores, @ symbols, and hyphens
+        if (value && !value.match(/^[a-zA-Z0-9._@-]+$/)) {
+            usernameInput.setCustomValidity('Username can contain letters, numbers, dots, underscores, @ symbols, and hyphens');
+        } else {
+            usernameInput.setCustomValidity('');
+        }
+    });
 });

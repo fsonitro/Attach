@@ -13,8 +13,8 @@ export const listSMBShares = async (serverName: string, username?: string, passw
         
         if (username && password) {
             // Use authenticated connection with password piped via stdin
-            const escapedPassword = password.replace(/'/g, "'\"'\"'");
-            command = `echo '${escapedPassword}' | smbutil view "//${username}@${serverName}" -`;
+            const escapedPassword = "'" + password.replace(/'/g, "'\"'\"'") + "'";
+            command = `echo ${escapedPassword} | smbutil view "//${username}@${serverName}" -`;
         } else {
             // Try without authentication first (for public shares)
             command = `smbutil view "//${serverName}"`;
