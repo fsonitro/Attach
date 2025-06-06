@@ -131,8 +131,8 @@ export const createMountWindow = () => {
     }
 
     mountWindow = new BrowserWindow({
-        width: 400,
-        height: 350,
+        width: 500,
+        height: 500,
         webPreferences: {
             preload: app.isPackaged 
                 ? path.join(__dirname, '../preload/index.js')
