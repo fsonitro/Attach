@@ -48,14 +48,14 @@ export const createMainWindow = () => {
     console.log(`Preload file exists: ${fs.existsSync(preloadPath)}`);
 
     mainWindow = new BrowserWindow({
-        width: 300,
-        height: 300,
+        width: 400,
+        height: 450,
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
             nodeIntegration: false,
         },
-        resizable: true,
+        resizable: false, // Disable resizing since no maximize button
         frame: true, // Enable native frame with controls
         transparent: false, // Disable transparency for native look
         titleBarStyle: 'default',
@@ -65,7 +65,7 @@ export const createMainWindow = () => {
         visualEffectState: 'active',
         title: 'Attach - Network Share Mounter',
         minimizable: true,
-        maximizable: true,
+        maximizable: false, // Disable maximize button
         closable: true,
     });
 

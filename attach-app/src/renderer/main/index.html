@@ -12,86 +12,220 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+            background: #f6f6f6; /* macOS window background */
+            color: #1d1d1f; /* macOS text color */
             height: 100vh;
+            overflow: hidden;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        /* Main content area */
+        .main-content {
+            padding: 32px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #f6f6f6;
+        }
+        
+        .app-icon {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+            border-radius: 22px;
+            overflow: hidden;
+            /* box-shadow: 0 4px 20px rgba(0, 122, 255, 0.2); */
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
         }
         
-        .container {
-            text-align: center;
-            padding: 20px;
+        .app-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
         
-        .logo {
-            font-size: 32px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        .app-name {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
         }
         
-        .subtitle {
-            font-size: 14px;
-            opacity: 0.8;
-            margin-bottom: 20px;
-            text-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+        .app-description {
+            font-size: 15px;
+            color: #86868b;
+            margin-bottom: 32px;
+            font-weight: 400;
         }
         
-        .controls {
+        /* Button styling - macOS style */
+        .button-group {
             display: flex;
-            gap: 15px;
+            gap: 12px;
+            flex-wrap: wrap;
             justify-content: center;
-            margin-top: 20px;
         }
         
-        button {
-            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 12px;
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            font-size: 13px;
             font-weight: 500;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            min-width: 100px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            letter-spacing: -0.01em;
         }
         
-        button:hover {
-            background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.2) 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        .btn-primary {
+            background: #007aff;
+            color: white;
         }
         
-        .mount-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .btn-primary:hover {
+            background: #0051d5;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
         }
         
-        .mount-btn:hover {
-            background: linear-gradient(135deg, #7c8ef5 0%, #8a5cb7 100%);
+        .btn-secondary {
+            background: #e5e5ea;
+            color: #1d1d1f;
+            border: 1px solid #d1d1d6;
+        }
+        
+        .btn-secondary:hover {
+            background: #d1d1d6;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        /* Status section */
+        .status-section {
+            margin-top: 40px;
+            text-align: center;
+        }
+        
+        .status-text {
+            font-size: 13px;
+            color: #86868b;
+            margin-bottom: 12px;
+        }
+        
+        .quick-stats {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 20px;
+            font-weight: 700;
+            color: #007aff;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: #86868b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #1e1e1e;
+                color: #ffffff;
+            }
+            
+            .main-content {
+                background: #1e1e1e;
+            }
+            
+            .app-name {
+                color: #ffffff;
+            }
+            
+            .app-description {
+                color: #98989d;
+            }
+            
+            .btn-secondary {
+                background: #2c2c2e;
+                color: #ffffff;
+                border-color: #48484a;
+            }
+            
+            .btn-secondary:hover {
+                background: #3a3a3c;
+            }
+            
+            .status-text {
+                color: #98989d;
+            }
+            
+            .stat-label {
+                color: #98989d;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">📁 Attach</div>
-        <div class="subtitle">Network Share Mounter</div>
+    <!-- Main content area -->
+    <div class="main-content">
+        <div class="app-icon">
+            <img src="../../../assets/icons/folders-icon.svg" alt="Attach App Icon" />
+        </div>
+        <div class="app-name">Attach</div>
+        <div class="app-description">Network Share Mounter</div>
         
-        <div class="controls">
-            <button class="mount-btn" onclick="openMounter()">
+        <div class="button-group">
+            <button class="btn btn-primary" onclick="openMounter()">
                 Mount Share
             </button>
-            <button onclick="openFolder()">
+            <button class="btn btn-secondary" onclick="openFolder()">
                 Open Folder
             </button>
-            <button onclick="openSettings()">
+            <button class="btn btn-secondary" onclick="openSettings()">
                 Settings
             </button>
+        </div>
+        
+        <div class="status-section">
+            <div class="status-text">Quick Actions</div>
+            <div class="quick-stats">
+                <div class="stat-item">
+                    <span class="stat-number" id="mountedCount">0</span>
+                    <span class="stat-label">Mounted</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="savedCount">0</span>
+                    <span class="stat-label">Saved</span>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -102,6 +236,33 @@
             console.log('Available API methods:', Object.keys(window.api));
         }
 
+        // Initialize stats when page loads
+        document.addEventListener('DOMContentLoaded', async () => {
+            await updateStats();
+        });
+
+        async function updateStats() {
+            try {
+                if (window.api) {
+                    // Update mounted shares count
+                    const shares = await window.api.getMountedShares();
+                    document.getElementById('mountedCount').textContent = shares.length;
+                    
+                    // Update saved connections count
+                    const savedConnections = await window.api.getSavedConnections();
+                    document.getElementById('savedCount').textContent = savedConnections.length;
+                } else {
+                    // Development mode fallback
+                    document.getElementById('mountedCount').textContent = '0';
+                    document.getElementById('savedCount').textContent = '0';
+                }
+            } catch (error) {
+                console.error('Failed to update stats:', error);
+                document.getElementById('mountedCount').textContent = '0';
+                document.getElementById('savedCount').textContent = '0';
+            }
+        }
+
         async function openMounter() {
             try {
                 console.log('openMounter called, window.api:', !!window.api);
@@ -109,6 +270,9 @@
                     console.log('Calling openMountWindow...');
                     await window.api.openMountWindow();
                     console.log('openMountWindow completed');
+                    
+                    // Refresh stats after potential mount
+                    setTimeout(() => updateStats(), 1000);
                 } else {
                     console.log('API not available - development mode?');
                     alert('API not available. Please check the console for errors.');
@@ -130,7 +294,7 @@
                         console.log('Opening folder:', shares[0].mountPoint);
                         await window.api.openInFinder(shares[0].mountPoint);
                     } else {
-                        alert('No mounted shares found');
+                        alert('No mounted shares found. Please mount a share first.');
                     }
                 } else {
                     console.log('API not available - development mode?');
@@ -158,6 +322,9 @@
                 alert('Failed to open settings window: ' + error.message);
             }
         }
+
+        // Refresh stats periodically
+        setInterval(updateStats, 10000); // Update every 10 seconds
     </script>
 </body>
 </html>

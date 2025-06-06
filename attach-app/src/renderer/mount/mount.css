@@ -1,40 +1,87 @@
-/* Mount Window Styles */
-body {
+/* Mount Window Styles - macOS Finder Style */
+* {
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    overflow: hidden;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    background: #f6f6f6; /* macOS window background */
+    color: #1d1d1f; /* macOS text color */
     height: 100vh;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* macOS window chrome */
+.titlebar {
+    height: 52px;
+    background: #f6f6f6;
+    border-bottom: 1px solid #d1d1d6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    -webkit-app-region: drag;
+}
+
+.window-controls {
+    position: absolute;
+    left: 20px;
+    display: flex;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+}
+
+.control-button {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+}
+
+.close { background: #ff5f57; }
+.minimize { background: #ffbd2e; }
+.maximize { background: #28ca42; }
+
+.window-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d1d1f;
+    letter-spacing: -0.01em;
 }
 
 .container {
-    padding: 20px;
-    height: 100vh;
+    padding: 24px 32px 32px 32px;
+    height: calc(100vh - 52px);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    background: #f6f6f6;
 }
 
 .header {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 
 .header h1 {
-    margin: 0 0 5px 0;
-    font-size: 24px;
-    font-weight: 600;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    margin: 0 0 6px 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1d1d1f;
+    letter-spacing: -0.02em;
 }
 
 .subtitle {
     margin: 0;
-    font-size: 14px;
-    opacity: 0.9;
-    font-weight: 300;
+    font-size: 13px;
+    color: #86868b;
+    font-weight: 400;
 }
 
 .mount-form {
@@ -53,61 +100,64 @@ body {
 .form-group label {
     font-size: 13px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
-    margin-bottom: 2px;
+    color: #1d1d1f;
+    margin-bottom: 4px;
+    letter-spacing: -0.01em;
 }
 
 .form-group input[type="text"],
 .form-group input[type="password"],
 .form-group select {
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    font-size: 14px;
-    backdrop-filter: blur(10px);
-    transition: all 0.2s ease;
+    padding: 8px 12px;
+    border: 1px solid #d1d1d6;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #1d1d1f;
+    font-size: 13px;
+    transition: all 0.15s ease;
+    height: 32px;
 }
 
 .form-group input[type="text"]:focus,
 .form-group input[type="password"]:focus,
 .form-group select:focus {
     outline: none;
-    border-color: rgba(255, 255, 255, 0.4);
-    background: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+    border-color: #007aff;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
 }
 
 .form-group input::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: #86868b;
 }
 
 /* Dropdown specific styles */
 .saved-connections-dropdown {
     width: 100%;
     cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,<svg width="10" height="6" viewBox="0 0 10 6" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l4 4 4-4" stroke="%23999" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 10px 6px;
+    padding-right: 32px;
 }
 
 .saved-connections-dropdown option {
-    background: #333;
-    color: white;
+    background: #ffffff;
+    color: #1d1d1f;
     padding: 8px;
-}
-
-.saved-connections-dropdown:invalid {
-    color: rgba(255, 255, 255, 0.6);
 }
 
 .input-hint {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.7);
-    font-style: italic;
+    color: #86868b;
+    font-style: normal;
 }
 
-/* Checkbox Styling */
+/* Checkbox Styling - macOS Style */
 .checkbox-group {
-    margin: 8px 0;
+    margin: 6px 0;
 }
 
 .checkbox-label {
@@ -115,8 +165,9 @@ body {
     align-items: center;
     cursor: pointer;
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.9);
+    color: #1d1d1f;
     gap: 8px;
+    padding: 4px 0;
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -126,19 +177,19 @@ body {
 .checkmark {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid #d1d1d6;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.1);
+    background: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     flex-shrink: 0;
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkmark {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.6);
+    background: #007aff;
+    border-color: #007aff;
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkmark::after {
@@ -148,88 +199,98 @@ body {
     font-weight: bold;
 }
 
-/* System Info Notice */
+.checkbox-label:hover .checkmark {
+    border-color: #007aff;
+}
+
+/* System Info Notice - macOS Style */
 .system-info {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.1);
+    padding: 10px 12px;
+    background: #e8f4fd;
     border-radius: 6px;
-    border-left: 3px solid rgba(255, 255, 255, 0.3);
-    margin: 8px 0;
+    border: 1px solid #b8daff;
+    margin: 12px 0;
 }
 
 .info-icon {
     font-size: 14px;
     flex-shrink: 0;
+    color: #007aff;
 }
 
 .system-info p {
     margin: 0;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.8);
-    line-height: 1.3;
+    font-size: 12px;
+    color: #1d1d1f;
+    line-height: 1.4;
 }
 
-/* Buttons */
+/* Buttons - macOS Style */
 .form-actions {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     margin-top: auto;
-    padding-top: 16px;
+    padding-top: 20px;
 }
 
 .btn {
-    padding: 10px 16px;
+    padding: 6px 16px;
+    border-radius: 6px;
     border: none;
-    border-radius: 8px;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     position: relative;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
+    height: 28px;
+    letter-spacing: -0.01em;
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: #e5e5ea;
+    color: #1d1d1f;
+    border: 1px solid #d1d1d6;
     flex: 1;
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: #d1d1d6;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .btn-primary {
-    background: rgba(255, 255, 255, 0.2);
+    background: #007aff;
     color: white;
-    border: 1px solid rgba(255, 255, 255, 0.3);
     flex: 2;
     font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.4);
+    background: #0051d5;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.btn:active {
+    transform: translateY(0);
 }
 
 .btn:disabled {
-    opacity: 0.6;
+    opacity: 0.5;
     cursor: not-allowed;
     transform: none !important;
 }
 
-/* Loading Spinner */
+/* Loading Spinner - macOS Style */
 .loading-spinner {
     width: 12px;
     height: 12px;
@@ -244,32 +305,33 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Status Messages */
+/* Status Messages - macOS Style */
 .status-message {
-    margin-top: 12px;
+    margin-top: 16px;
     padding: 10px 12px;
     border-radius: 6px;
     font-size: 12px;
     text-align: center;
     animation: slideIn 0.3s ease;
+    border: 1px solid;
 }
 
 .status-message.success {
-    background: rgba(76, 175, 80, 0.2);
-    border: 1px solid rgba(76, 175, 80, 0.3);
-    color: #c8e6c9;
+    background: #e8f5e8;
+    border-color: #4caf50;
+    color: #2e7d32;
 }
 
 .status-message.error {
-    background: rgba(244, 67, 54, 0.2);
-    border: 1px solid rgba(244, 67, 54, 0.3);
-    color: #ffcdd2;
+    background: #ffebee;
+    border-color: #f44336;
+    color: #c62828;
 }
 
 .status-message.loading {
-    background: rgba(255, 193, 7, 0.2);
-    border: 1px solid rgba(255, 193, 7, 0.3);
-    color: #fff8e1;
+    background: #fff8e1;
+    border-color: #ffc107;
+    color: #f57c00;
 }
 
 @keyframes slideIn {
@@ -283,10 +345,114 @@ body {
     }
 }
 
-/* Responsive adjustments */
-@media (max-height: 500px) {
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #1e1e1e;
+        color: #ffffff;
+    }
+    
+    .titlebar {
+        background: #1e1e1e;
+        border-bottom-color: #2c2c2e;
+    }
+    
+    .window-title {
+        color: #ffffff;
+    }
+    
     .container {
-        padding: 16px;
+        background: #1e1e1e;
+    }
+    
+    .header h1 {
+        color: #ffffff;
+    }
+    
+    .subtitle {
+        color: #98989d;
+    }
+    
+    .form-group label {
+        color: #ffffff;
+    }
+    
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group select {
+        background: #2c2c2e;
+        border-color: #48484a;
+        color: #ffffff;
+    }
+    
+    .form-group input[type="text"]:focus,
+    .form-group input[type="password"]:focus,
+    .form-group select:focus {
+        border-color: #007aff;
+        background: #3a3a3c;
+    }
+    
+    .form-group input::placeholder {
+        color: #98989d;
+    }
+    
+    .saved-connections-dropdown option {
+        background: #2c2c2e;
+        color: #ffffff;
+    }
+    
+    .input-hint {
+        color: #98989d;
+    }
+    
+    .checkbox-label {
+        color: #ffffff;
+    }
+    
+    .checkmark {
+        background: #2c2c2e;
+        border-color: #48484a;
+    }
+    
+    .system-info {
+        background: #1c2c3a;
+        border-color: #2c5aa0;
+    }
+    
+    .system-info p {
+        color: #ffffff;
+    }
+    
+    .btn-secondary {
+        background: #2c2c2e;
+        color: #ffffff;
+        border-color: #48484a;
+    }
+    
+    .btn-secondary:hover {
+        background: #3a3a3c;
+    }
+    
+    .status-message.success {
+        background: #1e3a1e;
+        color: #81c784;
+    }
+    
+    .status-message.error {
+        background: #3a1e1e;
+        color: #ef5350;
+    }
+    
+    .status-message.loading {
+        background: #3a351e;
+        color: #ffb74d;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-height: 600px) {
+    .container {
+        padding: 20px 28px 28px 28px;
     }
     
     .header h1 {
@@ -298,6 +464,24 @@ body {
     }
     
     .mount-form {
-        gap: 12px;
+        gap: 14px;
+    }
+}
+/* Responsive adjustments */
+@media (max-height: 600px) {
+    .container {
+        padding: 20px 28px 28px 28px;
+    }
+    
+    .header h1 {
+        font-size: 20px;
+    }
+    
+    .form-group {
+        gap: 4px;
+    }
+    
+    .mount-form {
+        gap: 14px;
     }
 }
