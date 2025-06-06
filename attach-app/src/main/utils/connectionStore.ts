@@ -193,7 +193,9 @@ class ConnectionStore {
         try {
             return await keytar.getPassword(KEYCHAIN_SERVICE, connectionId);
         } catch (error) {
-            console.error(`Failed to retrieve password for connection ${connectionId}:`, error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`Failed to retrieve password for connection ${connectionId}:`, error);
+            }
             return null;
         }
     }
@@ -207,7 +209,9 @@ class ConnectionStore {
         try {
             await keytar.setPassword(KEYCHAIN_SERVICE, connectionId, password);
         } catch (error) {
-            console.error(`Failed to store password for connection ${connectionId}:`, error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`Failed to store password for connection ${connectionId}:`, error);
+            }
             throw error;
         }
     }
@@ -217,7 +221,9 @@ class ConnectionStore {
         try {
             await keytar.deletePassword(KEYCHAIN_SERVICE, connectionId);
         } catch (error) {
-            console.warn(`Failed to remove password for connection ${connectionId}:`, error);
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`Failed to remove password for connection ${connectionId}:`, error);
+            }
             // Don't throw error for removal failures
         }
     }

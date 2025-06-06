@@ -24,7 +24,9 @@ export class AutoMountService {
         const autoMountConnections = await connectionStore.getAutoMountConnections();
         const results: AutoMountResult[] = [];
 
-        console.log(`Starting auto-mount for ${autoMountConnections.length} connections...`);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Starting auto-mount for ${autoMountConnections.length} connections...`);
+        }
 
         for (const connection of autoMountConnections) {
             const result = await this.mountConnection(connection);
@@ -37,7 +39,9 @@ export class AutoMountService {
     // Mount a specific saved connection
     async mountConnection(connection: SavedConnection): Promise<AutoMountResult> {
         try {
-            console.log(`Auto-mounting connection: ${connection.label} (${connection.sharePath})`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Auto-mounting connection: ${connection.label} (${connection.sharePath})`);
+            }
 
             // Get password from keychain
             const password = await connectionStore.getPassword(connection.id);
@@ -67,7 +71,9 @@ export class AutoMountService {
             // Update connection usage
             connectionStore.updateConnectionUsage(connection.id);
 
-            console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
+            }
 
             return {
                 connection,
@@ -77,7 +83,9 @@ export class AutoMountService {
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`❌ Failed to auto-mount ${connection.label}: ${errorMessage}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`❌ Failed to auto-mount ${connection.label}: ${errorMessage}`);
+            }
 
             return {
                 connection,
@@ -122,13 +130,17 @@ export class AutoMountService {
     async remountConnection(connectionId: string): Promise<AutoMountResult | null> {
         const connection = await connectionStore.getConnection(connectionId);
         if (!connection) {
-            console.error(`Connection not found: ${connectionId}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`Connection not found: ${connectionId}`);
+            }
             return null;
         }
 
         // Check if already mounted
         if (this.isConnectionMounted(connection)) {
-            console.log(`Connection ${connection.label} is already mounted`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Connection ${connection.label} is already mounted`);
+            }
             return {
                 connection,
                 success: true,

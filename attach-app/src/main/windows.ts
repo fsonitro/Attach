@@ -29,7 +29,10 @@ function getRendererPath(htmlPath: string): string {
         resolvedPath = path.join(process.cwd(), 'src', htmlPath);
     }
     
-    console.log(`getRendererPath: htmlPath=${htmlPath}, __dirname=${__dirname}, app.isPackaged=${app.isPackaged}, resolvedPath=${resolvedPath}`);
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`getRendererPath: htmlPath=${htmlPath}, __dirname=${__dirname}, app.isPackaged=${app.isPackaged}, resolvedPath=${resolvedPath}`);
+    }
     return resolvedPath;
 }
 
@@ -44,8 +47,11 @@ export const createMainWindow = () => {
         ? path.join(__dirname, '../preload/index.js')
         : path.join(process.cwd(), 'dist/preload/index.js');
     
-    console.log(`Main window preload path: ${preloadPath}`);
-    console.log(`Preload file exists: ${fs.existsSync(preloadPath)}`);
+    // Only log preload path in development
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Main window preload path: ${preloadPath}`);
+        console.log(`Preload file exists: ${fs.existsSync(preloadPath)}`);
+    }
 
     mainWindow = new BrowserWindow({
         width: 400,

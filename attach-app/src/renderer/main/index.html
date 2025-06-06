@@ -230,12 +230,6 @@
     </div>
     
     <script>
-        // Debug: Check if API is available
-        console.log('window.api available:', !!window.api);
-        if (window.api) {
-            console.log('Available API methods:', Object.keys(window.api));
-        }
-
         // Initialize stats when page loads
         document.addEventListener('DOMContentLoaded', async () => {
             await updateStats();
@@ -257,7 +251,7 @@
                     document.getElementById('savedCount').textContent = '0';
                 }
             } catch (error) {
-                console.error('Failed to update stats:', error);
+                // Silently fail in production, show user-friendly default values
                 document.getElementById('mountedCount').textContent = '0';
                 document.getElementById('savedCount').textContent = '0';
             }
@@ -265,61 +259,45 @@
 
         async function openMounter() {
             try {
-                console.log('openMounter called, window.api:', !!window.api);
                 if (window.api) {
-                    console.log('Calling openMountWindow...');
                     await window.api.openMountWindow();
-                    console.log('openMountWindow completed');
                     
                     // Refresh stats after potential mount
                     setTimeout(() => updateStats(), 1000);
                 } else {
-                    console.log('API not available - development mode?');
-                    alert('API not available. Please check the console for errors.');
+                    alert('Service temporarily unavailable. Please restart the application.');
                 }
             } catch (error) {
-                console.error('Failed to open mount window:', error);
-                alert('Failed to open mount window: ' + error.message);
+                alert('Failed to open mount window. Please try again.');
             }
         }
         
         async function openFolder() {
             try {
-                console.log('openFolder called, window.api:', !!window.api);
                 if (window.api) {
-                    console.log('Getting mounted shares...');
                     const shares = await window.api.getMountedShares();
-                    console.log('Mounted shares:', shares);
                     if (shares.length > 0) {
-                        console.log('Opening folder:', shares[0].mountPoint);
                         await window.api.openInFinder(shares[0].mountPoint);
                     } else {
                         alert('No mounted shares found. Please mount a share first.');
                     }
                 } else {
-                    console.log('API not available - development mode?');
-                    alert('API not available. Please check the console for errors.');
+                    alert('Service temporarily unavailable. Please restart the application.');
                 }
             } catch (error) {
-                console.error('Failed to open folder:', error);
-                alert('Failed to open folder: ' + error.message);
+                alert('Failed to open folder. Please try again.');
             }
         }
 
         async function openSettings() {
             try {
-                console.log('openSettings called, window.api:', !!window.api);
                 if (window.api) {
-                    console.log('Calling openSettingsWindow...');
                     await window.api.openSettingsWindow();
-                    console.log('openSettingsWindow completed');
                 } else {
-                    console.log('API not available - development mode?');
-                    alert('API not available. Please check the console for errors.');
+                    alert('Service temporarily unavailable. Please restart the application.');
                 }
             } catch (error) {
-                console.error('Failed to open settings window:', error);
-                alert('Failed to open settings window: ' + error.message);
+                alert('Failed to open settings. Please try again.');
             }
         }
 

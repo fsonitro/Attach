@@ -25,7 +25,7 @@ async function refreshMountedShares() {
     try {
         // First, clean up any orphaned mount directories
         const cleanedDirs = await cleanupOrphanedMountDirs();
-        if (cleanedDirs.length > 0) {
+        if (cleanedDirs.length > 0 && process.env.NODE_ENV === 'development') {
             console.log(`Cleaned up ${cleanedDirs.length} orphaned mount directories`);
         }
         
@@ -35,13 +35,17 @@ async function refreshMountedShares() {
         // Remove disconnected shares from our tracking
         for (const label of disconnectedShares) {
             mountedShares.delete(label);
-            console.log(`Removed disconnected share: ${label}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Removed disconnected share: ${label}`);
+            }
         }
         
         // Update tray menu if any shares were disconnected
         if (disconnectedShares.length > 0) {
             updateTrayMenu(mountedShares);
-            console.log(`Updated tray menu after removing ${disconnectedShares.length} disconnected shares`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Updated tray menu after removing ${disconnectedShares.length} disconnected shares`);
+            }
         }
     } catch (error) {
         console.warn('Error during share validation:', error);
@@ -71,28 +75,38 @@ app.whenReady().then(async () => {
     // Set up event listeners for network watcher
     if (networkWatcher) {
         networkWatcher.on('network-online', () => {
-            console.log('🟢 Network watcher detected network connection');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🟢 Network watcher detected network connection');
+            }
         });
         
         networkWatcher.on('network-offline', () => {
-            console.log('🔴 Network watcher detected network disconnection');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔴 Network watcher detected network disconnection');
+            }
         });
         
         networkWatcher.on('internet-available', () => {
-            console.log('🌐 Internet connectivity restored');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🌐 Internet connectivity restored');
+            }
         });
         
         networkWatcher.on('mount-success', (result) => {
-            console.log(`✅ Auto-mount successful: ${result.connection.label}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`✅ Auto-mount successful: ${result.connection.label}`);
+            }
             updateTrayMenu(mountedShares);
         });
         
         networkWatcher.on('mount-failed-permanently', (result) => {
-            console.log(`❌ Auto-mount failed permanently: ${result.connection.label} - ${result.error}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`❌ Auto-mount failed permanently: ${result.connection.label} - ${result.error}`);
+            }
         });
         
         networkWatcher.on('mounts-validated', (disconnectedShares) => {
-            if (disconnectedShares.length > 0) {
+            if (disconnectedShares.length > 0 && process.env.NODE_ENV === 'development') {
                 console.log(`🔍 Network watcher found ${disconnectedShares.length} disconnected shares`);
                 updateTrayMenu(mountedShares);
             }
@@ -110,30 +124,43 @@ app.whenReady().then(async () => {
     
     // Perform auto-mounting of saved connections
     if (await connectionStore.getAutoMountEnabled()) {
-        console.log('Starting auto-mount process...');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Starting auto-mount process...');
+        }
         try {
             const autoMountResults = await autoMountService.autoMountConnections();
             const summary = autoMountService.getAutoMountSummary(autoMountResults);
             
-            console.log(`Auto-mount completed: ${summary.successful}/${summary.total} successful`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Auto-mount completed: ${summary.successful}/${summary.total} successful`);
+                
+                if (summary.successful > 0) {
+                    console.log(`✅ Successfully mounted: ${summary.successfulConnections.join(', ')}`);
+                }
+                
+                if (summary.failed > 0) {
+                    console.log(`❌ Failed to mount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
+                }
+            }
             
             if (summary.successful > 0) {
-                console.log(`✅ Successfully mounted: ${summary.successfulConnections.join(', ')}`);
                 // Update tray menu with new mounts
                 updateTrayMenu(mountedShares);
             }
-            
-            if (summary.failed > 0) {
-                console.log(`❌ Failed to mount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
-            }
         } catch (error) {
-            console.error('Error during auto-mount process:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Error during auto-mount process:', error);
+            }
         }
     } else {
-        console.log('Auto-mount is disabled');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Auto-mount is disabled');
+        }
     }
     
-    console.log('Attach app is ready!');
+    if (process.env.NODE_ENV === 'development') {
+        console.log('Attach app is ready!');
+    }
 });
 
 // Quit when all windows are closed (except on macOS)
@@ -162,7 +189,9 @@ function setupIpcHandlers() {
     // Mount a network share
     ipcMain.handle('mount-share', async (event, sharePath: string, username: string, password: string, label?: string, saveCredentials: boolean = false, autoMount: boolean = false): Promise<MountResult> => {
         try {
-            console.log(`Attempting to mount share: ${sharePath} for user: ${username}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Attempting to mount share: ${sharePath} for user: ${username}`);
+            }
             
             const mountPoint = await mountSMBShare(sharePath, username, password);
             const mountLabel = label || `${sharePath.split('/').pop()} (${username})`;
@@ -177,9 +206,13 @@ function setupIpcHandlers() {
                         mountLabel,
                         autoMount
                     );
-                    console.log(`Credentials stored securely for connection: ${savedConnection.id}`);
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`Credentials stored securely for connection: ${savedConnection.id}`);
+                    }
                 } catch (credError) {
-                    console.warn('Failed to store credentials:', credError);
+                    if (process.env.NODE_ENV === 'development') {
+                        console.warn('Failed to store credentials:', credError);
+                    }
                     // Don't fail the mount if credential storage fails
                 }
             }
@@ -198,7 +231,9 @@ function setupIpcHandlers() {
             // Update tray menu with new shares
             updateTrayMenu(mountedShares);
             
-            console.log(`Successfully mounted ${sharePath} at ${mountPoint}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Successfully mounted ${sharePath} at ${mountPoint}`);
+            }
             
             return {
                 success: true,
@@ -207,11 +242,13 @@ function setupIpcHandlers() {
                 label: mountLabel
             };
         } catch (error) {
-            console.error('Mount error:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Mount error:', error);
+            }
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             return {
                 success: false,
-                message: errorMessage
+                message: 'Failed to mount network share. Please check your connection details and try again.'
             };
         }
     });
@@ -238,11 +275,12 @@ function setupIpcHandlers() {
                 message: `Successfully unmounted ${share.sharePath}`
             };
         } catch (error) {
-            console.error('Unmount error:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Unmount error:', error);
+            }
             return {
                 success: false,
-                message: errorMessage
+                message: 'Failed to unmount share. Please try again.'
             };
         }
     });
@@ -261,12 +299,14 @@ function setupIpcHandlers() {
                 });
                 mountedShares.delete(label);
             } catch (error) {
-                console.error(`Failed to unmount ${label}:`, error);
+                if (process.env.NODE_ENV === 'development') {
+                    console.error(`Failed to unmount ${label}:`, error);
+                }
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
                 results.push({
                     label,
                     success: false,
-                    error: errorMessage
+                    error: 'Failed to unmount share'
                 });
                 overallSuccess = false;
             }
@@ -309,8 +349,10 @@ function setupIpcHandlers() {
         try {
             await shell.openPath(folderPath);
         } catch (error) {
-            console.error('Failed to open path:', error);
-            throw error;
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to open path:', error);
+            }
+            throw new Error('Failed to open folder');
         }
     });
 
@@ -319,8 +361,10 @@ function setupIpcHandlers() {
         try {
             return await readDirectoryContents(folderPath);
         } catch (error) {
-            console.error('Failed to read directory:', error);
-            throw error;
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to read directory:', error);
+            }
+            throw new Error('Failed to read directory contents');
         }
     });
 
@@ -350,7 +394,9 @@ function setupIpcHandlers() {
             }
             return null;
         } catch (error) {
-            console.error('Failed to retrieve stored credentials:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to retrieve stored credentials:', error);
+            }
             return null;
         }
     });
@@ -381,7 +427,9 @@ function setupIpcHandlers() {
                 password: password
             };
         } catch (error) {
-            console.error('Failed to retrieve connection credentials:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to retrieve connection credentials:', error);
+            }
             return null;
         }
     });
@@ -394,10 +442,12 @@ function setupIpcHandlers() {
                 message: success ? 'Connection removed successfully' : 'Connection not found'
             };
         } catch (error) {
-            console.error('Failed to remove connection:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to remove connection:', error);
+            }
             return {
                 success: false,
-                message: error instanceof Error ? error.message : 'Unknown error occurred'
+                message: 'Failed to remove connection'
             };
         }
     });
@@ -426,10 +476,12 @@ function setupIpcHandlers() {
                 message: 'Auto-mount setting updated'
             };
         } catch (error) {
-            console.error('Failed to update auto-mount setting:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to update auto-mount setting:', error);
+            }
             return {
                 success: false,
-                message: error instanceof Error ? error.message : 'Unknown error occurred'
+                message: 'Failed to update auto-mount setting'
             };
         }
     });
@@ -458,14 +510,16 @@ function setupIpcHandlers() {
             } else {
                 return {
                     success: false,
-                    message: result.error || 'Failed to mount connection'
+                    message: 'Failed to mount connection'
                 };
             }
         } catch (error) {
-            console.error('Failed to mount saved connection:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to mount saved connection:', error);
+            }
             return {
                 success: false,
-                message: error instanceof Error ? error.message : 'Unknown error occurred'
+                message: 'Failed to mount connection'
             };
         }
     });
@@ -498,11 +552,13 @@ function setupIpcHandlers() {
                 message: `Cleaned up ${cleanedDirs.length} orphaned mount directories`
             };
         } catch (error) {
-            console.error('Failed to cleanup orphaned mounts:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to cleanup orphaned mounts:', error);
+            }
             return {
                 success: false,
                 cleanedCount: 0,
-                message: `Failed to cleanup orphaned mounts: ${error instanceof Error ? error.message : 'Unknown error'}`
+                message: 'Failed to cleanup orphaned mounts'
             };
         }
     });
@@ -545,10 +601,12 @@ function setupIpcHandlers() {
                 };
             }
         } catch (error) {
-            console.error('Failed to force network check:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to force network check:', error);
+            }
             return {
                 success: false,
-                message: `Network check failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+                message: 'Network check failed'
             };
         }
     });
@@ -568,10 +626,12 @@ function setupIpcHandlers() {
                 message: 'Network watcher service restarted successfully'
             };
         } catch (error) {
-            console.error('Failed to restart network watcher:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to restart network watcher:', error);
+            }
             return {
                 success: false,
-                message: `Failed to restart network watcher: ${error instanceof Error ? error.message : 'Unknown error'}`
+                message: 'Failed to restart network watcher'
             };
         }
     });
@@ -632,10 +692,12 @@ function setupIpcHandlers() {
             
             return { success: true, message: 'Settings saved successfully' };
         } catch (error) {
-            console.error('Failed to save settings:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to save settings:', error);
+            }
             return { 
                 success: false, 
-                message: error instanceof Error ? error.message : 'Unknown error occurred' 
+                message: 'Failed to save settings'
             };
         }
     });
@@ -655,7 +717,9 @@ function setupIpcHandlers() {
             
             return { success: false, path: null };
         } catch (error) {
-            console.error('Failed to open directory dialog:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to open directory dialog:', error);
+            }
             return { success: false, path: null };
         }
     });
@@ -674,7 +738,9 @@ function setupIpcHandlers() {
                     await unmountSMBShare(share.mountPoint);
                     mountedShares.delete(label);
                 } catch (error) {
-                    console.error(`Failed to unmount ${label}:`, error);
+                    if (process.env.NODE_ENV === 'development') {
+                        console.error(`Failed to unmount ${label}:`, error);
+                    }
                 }
             }
             
@@ -686,10 +752,12 @@ function setupIpcHandlers() {
             
             return { success: true, message: 'All data cleared successfully' };
         } catch (error) {
-            console.error('Failed to clear all data:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to clear all data:', error);
+            }
             return { 
                 success: false, 
-                message: error instanceof Error ? error.message : 'Unknown error occurred' 
+                message: 'Failed to clear data'
             };
         }
     });
@@ -702,11 +770,13 @@ function setupIpcHandlers() {
             const connections = await connectionStore.getConnections();
             return { success: true, connections };
         } catch (error) {
-            console.error('Failed to get connections:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to get connections:', error);
+            }
             return { 
                 success: false, 
                 connections: [],
-                message: error instanceof Error ? error.message : 'Unknown error occurred' 
+                message: 'Failed to get connections'
             };
         }
     });
@@ -730,13 +800,19 @@ app.on('before-quit', async (event) => {
         }
         
         // Unmount all shares before quitting
-        console.log('App is quitting, unmounting all shares...');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('App is quitting, unmounting all shares...');
+        }
         for (const [label, share] of mountedShares.entries()) {
             try {
                 await unmountSMBShare(share.mountPoint);
-                console.log(`Unmounted ${share.sharePath}`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Unmounted ${share.sharePath}`);
+                }
             } catch (error) {
-                console.error(`Failed to unmount ${share.sharePath}:`, error);
+                if (process.env.NODE_ENV === 'development') {
+                    console.error(`Failed to unmount ${share.sharePath}:`, error);
+                }
             }
         }
         
@@ -747,5 +823,7 @@ app.on('before-quit', async (event) => {
 
 // Ensure proper cleanup when the app is about to exit
 app.on('will-quit', () => {
-    console.log('App is exiting...');
+    if (process.env.NODE_ENV === 'development') {
+        console.log('App is exiting...');
+    }
 });

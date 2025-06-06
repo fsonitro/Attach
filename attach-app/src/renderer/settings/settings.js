@@ -50,7 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateNetworkSettingsVisibility();
 
         } catch (error) {
-            console.error('Failed to load settings:', error);
             showStatus('Failed to load settings', 'error');
         }
     }
@@ -157,7 +156,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 updateSaveButtonState();
             }
         } catch (error) {
-            console.error('Failed to browse mount location:', error);
             showStatus('Failed to select directory', 'error');
         }
     }
@@ -167,7 +165,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Open the connections management window
             await window.api.openConnectionManager();
         } catch (error) {
-            console.error('Failed to open connection manager:', error);
             showStatus('Failed to open connection manager', 'error');
         }
     }
@@ -186,7 +183,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Reload settings to reflect changes
                 await loadSettings();
             } catch (error) {
-                console.error('Failed to clear all data:', error);
                 showStatus('Failed to clear data', 'error');
             }
         }
@@ -231,7 +227,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 showStatus('Settings reset to defaults', 'info');
             } catch (error) {
-                console.error('Failed to reset defaults:', error);
                 showStatus('Failed to reset settings', 'error');
             }
         }
@@ -256,7 +251,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, 1500);
 
         } catch (error) {
-            console.error('Failed to save settings:', error);
             showStatus('Failed to save settings', 'error');
         } finally {
             elements.saveBtn.disabled = false;

@@ -50,7 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         } catch (error) {
-            console.error('Failed to load connection:', error);
             showMessage('Failed to load connection details', 'error');
         }
     });
@@ -97,7 +96,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
         } catch (error) {
-            console.error('Mount error:', error);
             showMessage(`Failed to mount share: ${error.message}`, 'error');
         } finally {
             showLoading(false);
@@ -130,7 +128,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }, 3000);
                 }
             } catch (error) {
-                console.error('Failed to load credentials:', error);
+                // Silently ignore credential loading errors
             }
         }
     });
@@ -156,7 +154,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             savedConnectionsGroup.style.display = savedConnections.length > 0 ? 'flex' : 'none';
             
         } catch (error) {
-            console.error('Failed to load saved connections:', error);
+            // Silently fail to load saved connections - app will work without them
         }
     }
 
@@ -164,11 +162,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadSettings() {
         try {
             const settings = await window.api.getAutoMountSettings();
-            // You could use these settings to set default checkbox states
-            // For now, we'll just log them
-            console.log('Auto-mount settings:', settings);
+            // Settings loaded successfully (no action needed for UI)
         } catch (error) {
-            console.error('Failed to load settings:', error);
+            // Silently fail to load settings - use defaults
         }
     }
 

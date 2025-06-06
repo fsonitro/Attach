@@ -15,9 +15,15 @@ export const listSMBShares = async (serverName: string, username?: string, passw
             // Use authenticated connection with password piped via stdin
             const escapedPassword = "'" + password.replace(/'/g, "'\"'\"'") + "'";
             command = `echo ${escapedPassword} | smbutil view "//${username}@${serverName}" -`;
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Listing shares on ${serverName} with authentication for user: ${username}`);
+            }
         } else {
             // Try without authentication first (for public shares)
             command = `smbutil view "//${serverName}"`;
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Listing shares on ${serverName} without authentication`);
+            }
         }
         
         const result = await execPromise(command, { timeout: 10000 });
@@ -42,7 +48,10 @@ export const listSMBShares = async (serverName: string, username?: string, passw
         }
         return shares;
     } catch (error) {
-        console.warn(`Failed to list shares for ${serverName}:`, error);
+        // Only log detailed errors in development
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`Failed to list shares for ${serverName} (user: ${username || 'anonymous'}):`, 'Authentication or connection error');
+        }
         return [];
     }
 };
@@ -61,16 +70,22 @@ export const findCorrectShareCase = async (serverName: string, shareName: string
         const lowerCaseTarget = shareName.toLowerCase();
         for (const share of availableShares) {
             if (share.toLowerCase() === lowerCaseTarget) {
-                console.log(`Found case-corrected share: ${shareName} -> ${share}`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Found case-corrected share: ${shareName} -> ${share}`);
+                }
                 return share;
             }
         }
         
         // If no match found, return original name
-        console.warn(`Share ${shareName} not found in available shares:`, availableShares);
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`Share ${shareName} not found in available shares:`, availableShares);
+        }
         return shareName;
     } catch (error) {
-        console.warn(`Failed to find correct case for share ${shareName}:`, error);
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`Failed to find correct case for share ${shareName} on ${serverName}:`, 'Connection or authentication error');
+        }
         return shareName;
     }
 };
@@ -95,12 +110,16 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     const originalShareName = pathParts[1];
     
     // Try to find the correct case for the share name
-    console.log(`Looking for share: ${originalShareName} on server: ${serverName}`);
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Looking for share: ${originalShareName} on server: ${serverName}`);
+    }
     // For now, just try the common case variations to avoid interactive prompts
     let correctedShareName = originalShareName;
     if (originalShareName.toLowerCase() === 'nas') {
         correctedShareName = 'NAS'; // Common case for NAS shares
-        console.log(`Applied common case correction: ${originalShareName} -> ${correctedShareName}`);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Applied common case correction: ${originalShareName} -> ${correctedShareName}`);
+        }
     }
     // In the future, we could add more case corrections here or implement the authenticated lookup
     // const correctedShareName = await findCorrectShareCase(serverName, originalShareName, sanitizedUsername, password);
@@ -113,7 +132,9 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     const mountPoint = `${process.env.HOME}/mounts/${mountLabel}`;
     
     // Create mount point directory (no sudo needed in user's home)
-    console.log(`Creating mount point: ${mountPoint}`);
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Creating mount point: ${mountPoint}`);
+    }
     try {
         await execPromise(`mkdir -p "${mountPoint}"`, { timeout: 30000 });
     } catch (error) {
@@ -125,13 +146,19 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     const encodedPassword = encodeURIComponent(password);
     const command = `mount_smbfs "smb://${sanitizedUsername}:${encodedPassword}@${sanitizedSharePath}" "${mountPoint}"`;
 
-    console.log(`Attempting to mount: //${sanitizedSharePath} as user: ${sanitizedUsername}`);
-    console.log(`Mount command: mount_smbfs "smb://${sanitizedUsername}:[HIDDEN]@${sanitizedSharePath}" "${mountPoint}"`);
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Attempting to mount: //${sanitizedSharePath} as user: ${sanitizedUsername}`);
+        console.log(`Mount command: mount_smbfs "smb://${sanitizedUsername}:[HIDDEN]@${sanitizedSharePath}" "${mountPoint}"`);
+    }
 
     try {
         const result = await execPromise(command, { timeout: 60000 }); // 60 second timeout
-        console.log(`Mount successful: //${sanitizedSharePath} -> ${mountPoint}`);
-        console.log(`Mount result stdout:`, result.stdout);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Mount successful: //${sanitizedSharePath} -> ${mountPoint}`);
+            if (result.stdout && result.stdout.trim().length > 0) {
+                console.log(`Mount result stdout:`, result.stdout);
+            }
+        }
         
         // Verify the mount actually worked by checking if the directory is accessible
         try {
@@ -146,30 +173,43 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
         try {
             await execPromise(`test -d "${mountPoint}" && rmdir "${mountPoint}"`);
         } catch (cleanupError) {
-            console.warn(`Failed to clean up mount point: ${mountPoint}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`Failed to clean up mount point: ${mountPoint}`);
+            }
         }
         
         const errorMessage = error instanceof Error ? error.message : String(error);
         const stderr = (error as any).stderr || '';
         
-        console.error(`Mount failed with error:`, errorMessage);
-        console.error(`Mount stderr:`, stderr);
+        // Sanitize error messages to remove any potential password exposure
+        const sanitizedErrorMessage = errorMessage.replace(new RegExp(encodeURIComponent(password), 'g'), '[HIDDEN]');
+        const sanitizedStderr = stderr.replace(new RegExp(encodeURIComponent(password), 'g'), '[HIDDEN]');
         
-        // Provide more helpful error messages
-        if (errorMessage.includes('Authentication') || stderr.includes('Authentication')) {
+        // Log sanitized error for debugging (only in development)
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`Mount failed for share: //${sanitizedSharePath} user: ${sanitizedUsername}`);
+            console.error(`Sanitized error:`, sanitizedErrorMessage);
+            if (sanitizedStderr) {
+                console.error(`Sanitized stderr:`, sanitizedStderr);
+            }
+        }
+        
+        // Provide more helpful error messages (without exposing sensitive data)
+        if (sanitizedErrorMessage.includes('Authentication') || sanitizedStderr.includes('Authentication')) {
             throw new Error('Authentication failed. Please check your username and password.');
-        } else if (errorMessage.includes('No route to host') || errorMessage.includes('could not connect') || stderr.includes('No route to host')) {
+        } else if (sanitizedErrorMessage.includes('No route to host') || sanitizedErrorMessage.includes('could not connect') || sanitizedStderr.includes('No route to host')) {
             throw new Error('Could not connect to the server. Please check the server address and network connection.');
-        } else if (errorMessage.includes('Permission denied') || stderr.includes('Permission denied')) {
+        } else if (sanitizedErrorMessage.includes('Permission denied') || sanitizedStderr.includes('Permission denied')) {
             throw new Error('Permission denied. Please check your credentials and access rights.');
-        } else if (errorMessage.includes('timeout')) {
+        } else if (sanitizedErrorMessage.includes('timeout')) {
             throw new Error('Connection timeout. The server might be unreachable or slow to respond.');
-        } else if (stderr.includes('mount_smbfs: server rejected the connection')) {
+        } else if (sanitizedStderr.includes('mount_smbfs: server rejected the connection')) {
             throw new Error('Server rejected the connection. Please check the server name and share path.');
-        } else if (stderr.includes('Operation not supported')) {
+        } else if (sanitizedStderr.includes('Operation not supported')) {
             throw new Error('SMB operation not supported. The server might not support SMB or the share might not exist.');
         } else {
-            throw new Error(`Failed to mount SMB share: ${errorMessage}${stderr ? ` (${stderr})` : ''}`);
+            // Return a generic error message that doesn't expose sensitive information
+            throw new Error('Failed to mount SMB share. Please check your connection details and try again.');
         }
     }
 };
@@ -181,7 +221,10 @@ export const isMountPointAccessible = async (mountPoint: string): Promise<boolea
         await execPromise(`test -d "${mountPoint}" && ls "${mountPoint}" > /dev/null 2>&1`, { timeout: 5000 });
         return true;
     } catch (error) {
-        console.warn(`Mount point not accessible: ${mountPoint}`);
+        // Mount point not accessible (only log in development)
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`Mount point not accessible: ${mountPoint}`);
+        }
         return false;
     }
 };

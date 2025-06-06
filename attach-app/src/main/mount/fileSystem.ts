@@ -8,7 +8,9 @@ export async function readDirectoryContents(dirPath: string): Promise<string[]> 
         const files = await fs.readdir(dirPath);
         return files;
     } catch (error) {
-        console.error(`Error reading directory ${dirPath}:`, error);
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`Error reading directory ${dirPath}:`, error);
+        }
         throw error;
     }
 }
@@ -18,7 +20,9 @@ export async function getFileStats(filePath: string): Promise<Stats> {
         const stats = await fs.stat(filePath);
         return stats;
     } catch (error) {
-        console.error(`Error getting stats for file ${filePath}:`, error);
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`Error getting stats for file ${filePath}:`, error);
+        }
         throw error;
     }
 }

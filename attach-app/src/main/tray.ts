@@ -66,9 +66,13 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                         // Update tray menu
                         updateTrayMenu(mountedShares);
                         
-                        console.log(`Successfully unmounted ${share.label}`);
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`Successfully unmounted ${share.label}`);
+                        }
                     } catch (error) {
-                        console.error(`Failed to unmount ${share.label}:`, error);
+                        if (process.env.NODE_ENV === 'development') {
+                            console.error(`Failed to unmount ${share.label}:`, error);
+                        }
                     }
                 }
             }
@@ -105,15 +109,21 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             enabled: mountedShares.size > 0,
             click: async () => {
                 try {
-                    console.log('Unmount all triggered from tray');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('Unmount all triggered from tray');
+                    }
                     
                     // Unmount all shares
                     for (const [label, share] of mountedShares.entries()) {
                         try {
                             await unmountSMBShare(share.mountPoint);
-                            console.log(`Successfully unmounted ${label}`);
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`Successfully unmounted ${label}`);
+                            }
                         } catch (error) {
-                            console.error(`Failed to unmount ${label}:`, error);
+                            if (process.env.NODE_ENV === 'development') {
+                                console.error(`Failed to unmount ${label}:`, error);
+                            }
                         }
                     }
                     
@@ -123,9 +133,13 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                     // Update tray menu
                     updateTrayMenu(mountedShares);
                     
-                    console.log('Unmount all completed');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('Unmount all completed');
+                    }
                 } catch (error) {
-                    console.error('Failed to unmount all:', error);
+                    if (process.env.NODE_ENV === 'development') {
+                        console.error('Failed to unmount all:', error);
+                    }
                 }
             }
         },
@@ -133,17 +147,21 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             label: 'Cleanup Orphaned Mounts',
             click: async () => {
                 try {
-                    console.log('Manual cleanup triggered from tray');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('Manual cleanup triggered from tray');
+                    }
                     // Import the cleanup function and call it directly
                     const { cleanupOrphanedMountDirs } = require('./mount/smbService');
                     const cleanedDirs = await cleanupOrphanedMountDirs();
-                    if (cleanedDirs.length > 0) {
+                    if (cleanedDirs.length > 0 && process.env.NODE_ENV === 'development') {
                         console.log(`Manually cleaned up ${cleanedDirs.length} orphaned mount directories`);
-                    } else {
+                    } else if (process.env.NODE_ENV === 'development') {
                         console.log('No orphaned mount directories found');
                     }
                 } catch (error) {
-                    console.error('Failed to cleanup orphaned mounts:', error);
+                    if (process.env.NODE_ENV === 'development') {
+                        console.error('Failed to cleanup orphaned mounts:', error);
+                    }
                 }
             }
         },

@@ -57,7 +57,9 @@ export class NetworkWatcher extends EventEmitter {
 
     // Start the network monitoring service
     async start(): Promise<void> {
-        console.log('🌐 Starting NetworkWatcher service...');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🌐 Starting NetworkWatcher service...');
+        }
         
         // Initial network check and auto-mount
         await this.checkNetworkStatus();
@@ -73,12 +75,16 @@ export class NetworkWatcher extends EventEmitter {
             this.retryFailedAutoMounts();
         }, this.AUTO_MOUNT_RETRY_INTERVAL);
         
-        console.log('✅ NetworkWatcher service started');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('✅ NetworkWatcher service started');
+        }
     }
 
     // Stop the network monitoring service
     stop(): void {
-        console.log('🛑 Stopping NetworkWatcher service...');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🛑 Stopping NetworkWatcher service...');
+        }
         
         if (this.networkCheckInterval) {
             clearInterval(this.networkCheckInterval);
@@ -93,7 +99,9 @@ export class NetworkWatcher extends EventEmitter {
         this.pendingAutoMounts.clear();
         this.mountAttempts.clear();
         
-        console.log('✅ NetworkWatcher service stopped');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('✅ NetworkWatcher service stopped');
+        }
     }
 
     // Check current network status
@@ -116,28 +124,38 @@ export class NetworkWatcher extends EventEmitter {
             // Emit events for network status changes
             if (previousStatus.isOnline !== isOnline) {
                 if (isOnline) {
-                    console.log('🟢 Network connection established');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🟢 Network connection established');
+                    }
                     this.emit('network-online');
                     // Trigger auto-mount when network comes back online
                     await this.handleNetworkReconnection();
                 } else {
-                    console.log('🔴 Network connection lost');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🔴 Network connection lost');
+                    }
                     this.emit('network-offline');
                 }
             }
             
             if (previousStatus.hasNetworkConnectivity !== hasNetworkConnectivity) {
                 if (hasNetworkConnectivity) {
-                    console.log('🌐 Internet connectivity restored');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🌐 Internet connectivity restored');
+                    }
                     this.emit('internet-available');
                 } else {
-                    console.log('🚫 Internet connectivity lost');
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🚫 Internet connectivity lost');
+                    }
                     this.emit('internet-unavailable');
                 }
             }
             
         } catch (error) {
-            console.warn('⚠️ Error checking network status:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.warn('⚠️ Error checking network status:', error);
+            }
             this.currentNetworkStatus.isOnline = false;
             this.currentNetworkStatus.hasNetworkConnectivity = false;
             this.currentNetworkStatus.canReachGateway = false;
@@ -191,20 +209,28 @@ export class NetworkWatcher extends EventEmitter {
 
     // Perform initial auto-mount on app startup
     async performInitialAutoMount(): Promise<void> {
-        console.log('🚀 Performing initial auto-mount check...');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🚀 Performing initial auto-mount check...');
+        }
         
         if (!this.currentNetworkStatus.isOnline) {
-            console.log('⏸️ Network not available, delaying auto-mount');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('⏸️ Network not available, delaying auto-mount');
+            }
             return;
         }
 
         const autoMountConnections = connectionStore.getAutoMountConnections();
-        console.log(`📂 Found ${autoMountConnections.length} connections configured for auto-mount`);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`📂 Found ${autoMountConnections.length} connections configured for auto-mount`);
+        }
 
         for (const connection of autoMountConnections) {
             // Check if already mounted
             if (this.isConnectionCurrentlyMounted(connection)) {
-                console.log(`✅ ${connection.label} is already mounted`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`✅ ${connection.label} is already mounted`);
+                }
                 continue;
             }
 
@@ -220,7 +246,9 @@ export class NetworkWatcher extends EventEmitter {
 
     // Handle network reconnection
     private async handleNetworkReconnection(): Promise<void> {
-        console.log('🔄 Network reconnected, checking mounts and retrying failed connections...');
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🔄 Network reconnected, checking mounts and retrying failed connections...');
+        }
         
         // Wait a bit for network to stabilize
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -248,7 +276,9 @@ export class NetworkWatcher extends EventEmitter {
             const isStillMounted = await isMountPoint(share.mountPoint);
             
             if (!isAccessible || !isStillMounted) {
-                console.log(`❌ Share ${label} is no longer accessible, removing from tracking`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`❌ Share ${label} is no longer accessible, removing from tracking`);
+                }
                 disconnectedShares.push(label);
                 
                 // Find the connection and add it back to pending auto-mounts
@@ -282,7 +312,9 @@ export class NetworkWatcher extends EventEmitter {
         const attemptNumber = (this.mountAttempts.get(connection.id) || 0) + 1;
         this.mountAttempts.set(connection.id, attemptNumber);
         
-        console.log(`🔄 Auto-mount attempt ${attemptNumber} for ${connection.label}`);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🔄 Auto-mount attempt ${attemptNumber} for ${connection.label}`);
+        }
         
         const attempt: AutoMountAttempt = {
             connection,
@@ -294,7 +326,9 @@ export class NetworkWatcher extends EventEmitter {
         try {
             // Check if already mounted
             if (this.isConnectionCurrentlyMounted(connection)) {
-                console.log(`✅ ${connection.label} is already mounted`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`✅ ${connection.label} is already mounted`);
+                }
                 this.pendingAutoMounts.delete(connection.id);
                 this.mountAttempts.delete(connection.id);
                 attempt.success = true;
@@ -337,23 +371,31 @@ export class NetworkWatcher extends EventEmitter {
             attempt.success = true;
             attempt.mountPoint = mountPoint;
 
-            console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
+            }
             this.emit('mount-success', { connection, mountPoint });
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`❌ Auto-mount attempt ${attemptNumber} failed for ${connection.label}: ${errorMessage}`);
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`❌ Auto-mount attempt ${attemptNumber} failed for ${connection.label}: ${errorMessage}`);
+            }
             
             attempt.error = errorMessage;
             
             // Check if we should retry
             if (attemptNumber >= this.MAX_RETRY_ATTEMPTS) {
-                console.warn(`🚫 Max retry attempts reached for ${connection.label}, removing from auto-mount queue`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.warn(`🚫 Max retry attempts reached for ${connection.label}, removing from auto-mount queue`);
+                }
                 this.pendingAutoMounts.delete(connection.id);
                 this.mountAttempts.delete(connection.id);
                 this.emit('mount-failed-permanently', { connection, error: errorMessage });
             } else {
-                console.log(`⏳ Will retry ${connection.label} in next cycle`);
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`⏳ Will retry ${connection.label} in next cycle`);
+                }
             }
         }
 
@@ -367,11 +409,15 @@ export class NetworkWatcher extends EventEmitter {
         }
 
         if (!this.currentNetworkStatus.isOnline) {
-            console.log('⏸️ Network offline, skipping auto-mount retry');
+            if (process.env.NODE_ENV === 'development') {
+                console.log('⏸️ Network offline, skipping auto-mount retry');
+            }
             return;
         }
 
-        console.log(`🔄 Retrying ${this.pendingAutoMounts.size} pending auto-mounts...`);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🔄 Retrying ${this.pendingAutoMounts.size} pending auto-mounts...`);
+        }
 
         for (const connectionId of this.pendingAutoMounts) {
             const connection = await connectionStore.getConnection(connectionId);
