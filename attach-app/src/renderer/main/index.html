@@ -89,36 +89,73 @@
             <button onclick="openFolder()">
                 Open Folder
             </button>
+            <button onclick="openSettings()">
+                Settings
+            </button>
         </div>
     </div>
     
     <script>
+        // Debug: Check if API is available
+        console.log('window.api available:', !!window.api);
+        if (window.api) {
+            console.log('Available API methods:', Object.keys(window.api));
+        }
+
         async function openMounter() {
             try {
+                console.log('openMounter called, window.api:', !!window.api);
                 if (window.api) {
+                    console.log('Calling openMountWindow...');
                     await window.api.openMountWindow();
+                    console.log('openMountWindow completed');
                 } else {
                     console.log('API not available - development mode?');
+                    alert('API not available. Please check the console for errors.');
                 }
             } catch (error) {
                 console.error('Failed to open mount window:', error);
+                alert('Failed to open mount window: ' + error.message);
             }
         }
         
         async function openFolder() {
             try {
+                console.log('openFolder called, window.api:', !!window.api);
                 if (window.api) {
+                    console.log('Getting mounted shares...');
                     const shares = await window.api.getMountedShares();
+                    console.log('Mounted shares:', shares);
                     if (shares.length > 0) {
+                        console.log('Opening folder:', shares[0].mountPoint);
                         await window.api.openInFinder(shares[0].mountPoint);
                     } else {
                         alert('No mounted shares found');
                     }
                 } else {
                     console.log('API not available - development mode?');
+                    alert('API not available. Please check the console for errors.');
                 }
             } catch (error) {
                 console.error('Failed to open folder:', error);
+                alert('Failed to open folder: ' + error.message);
+            }
+        }
+
+        async function openSettings() {
+            try {
+                console.log('openSettings called, window.api:', !!window.api);
+                if (window.api) {
+                    console.log('Calling openSettingsWindow...');
+                    await window.api.openSettingsWindow();
+                    console.log('openSettingsWindow completed');
+                } else {
+                    console.log('API not available - development mode?');
+                    alert('API not available. Please check the console for errors.');
+                }
+            } catch (error) {
+                console.error('Failed to open settings window:', error);
+                alert('Failed to open settings window: ' + error.message);
             }
         }
     </script>

@@ -1,7 +1,7 @@
 // src/main/tray.ts
 import { app, Tray, Menu, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
-import { showMainWindow, createMountWindow, quitApplication } from './windows';
+import { showMainWindow, createMountWindow, createSettingsWindow, quitApplication } from './windows';
 import { unmountSMBShare } from './mount/smbService';
 
 let tray: Tray | null = null;
@@ -145,6 +145,13 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 } catch (error) {
                     console.error('Failed to cleanup orphaned mounts:', error);
                 }
+            }
+        },
+        { type: 'separator' },
+        {
+            label: 'Settings',
+            click: () => {
+                createSettingsWindow();
             }
         },
         { type: 'separator' },

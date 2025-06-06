@@ -2,9 +2,11 @@
 
 import { BrowserWindow, app } from 'electron';
 import path from 'path';
+import fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
 let mountWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 
 // Helper function to get the correct path for different environments
 function getResourcePath(relativePath: string): string {
@@ -38,13 +40,18 @@ export const createMainWindow = () => {
         return mainWindow;
     }
 
+    const preloadPath = app.isPackaged 
+        ? path.join(__dirname, '../preload/index.js')
+        : path.join(process.cwd(), 'dist/preload/index.js');
+    
+    console.log(`Main window preload path: ${preloadPath}`);
+    console.log(`Preload file exists: ${fs.existsSync(preloadPath)}`);
+
     mainWindow = new BrowserWindow({
         width: 300,
         height: 300,
         webPreferences: {
-            preload: app.isPackaged 
-                ? path.join(__dirname, '../preload/index.js')
-                : path.join(process.cwd(), 'dist/preload/index.js'),
+            preload: preloadPath,
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -170,5 +177,58 @@ export const createMountWindow = () => {
 
     mountWindow.on('closed', () => {
         mountWindow = null;
+    });
+};
+
+export const createSettingsWindow = () => {
+    if (settingsWindow) {
+        settingsWindow.focus();
+        return;
+    }
+
+    settingsWindow = new BrowserWindow({
+        width: 700,
+        height: 600,
+        webPreferences: {
+            preload: app.isPackaged 
+                ? path.join(__dirname, '../preload/index.js')
+                : path.join(process.cwd(), 'dist/preload/index.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        resizable: false,
+        frame: true,
+        transparent: false,
+        modal: true,
+        parent: mainWindow || undefined,
+        show: false,
+        vibrancy: 'sidebar',
+        visualEffectState: 'active',
+        title: 'Attach Settings',
+        minimizable: false,
+        maximizable: false,
+        closable: true,
+    });
+
+    settingsWindow.loadFile(getRendererPath('renderer/settings/index.html'));
+
+    // Show with animation
+    settingsWindow.once('ready-to-show', () => {
+        settingsWindow?.show();
+        
+        // Fade entrance animation
+        settingsWindow?.setOpacity(0);
+        let opacity = 0;
+        const fadeIn = setInterval(() => {
+            opacity += 0.1;
+            settingsWindow?.setOpacity(opacity);
+            if (opacity >= 1) {
+                clearInterval(fadeIn);
+            }
+        }, 20);
+    });
+
+    settingsWindow.on('closed', () => {
+        settingsWindow = null;
     });
 };

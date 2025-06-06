@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attach Settings</title>
+    <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+    <div class="settings-window">
+        <div class="settings-header">
+            <h1>Settings</h1>
+            <p class="subtitle">Configure Attach preferences</p>
+        </div>
+
+        <div class="settings-content">
+            <!-- General Settings Section -->
+            <div class="settings-section">
+                <h2>General</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Start at Login</label>
+                        <p class="setting-description">Automatically start Attach when you log in to your Mac</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="startAtLogin">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Remember Credentials</label>
+                        <p class="setting-description">Save usernames and passwords securely in Keychain</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rememberCredentials">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Auto-Mount Settings Section -->
+            <div class="settings-section">
+                <h2>Auto-Mount</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Enable Auto-Mount</label>
+                        <p class="setting-description">Automatically mount saved connections on app startup</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoMountEnabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Network Monitoring</label>
+                        <p class="setting-description">Monitor network connectivity and auto-reconnect when available</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="networkWatcherEnabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item network-settings">
+                    <div class="setting-info">
+                        <label>Network Check Interval</label>
+                        <p class="setting-description">How often to check network connectivity (seconds)</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="number" id="checkInterval" min="5" max="120" step="5" class="number-input">
+                    </div>
+                </div>
+
+                <div class="setting-item network-settings">
+                    <div class="setting-info">
+                        <label>Retry Attempts</label>
+                        <p class="setting-description">Number of mount retry attempts after network reconnection</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="number" id="retryAttempts" min="1" max="10" step="1" class="number-input">
+                    </div>
+                </div>
+
+                <div class="setting-item network-settings">
+                    <div class="setting-info">
+                        <label>Retry Delay</label>
+                        <p class="setting-description">Delay between retry attempts (seconds)</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="number" id="retryDelay" min="1" max="30" step="1" class="number-input">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage Settings Section -->
+            <div class="settings-section">
+                <h2>Storage</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Mount Location</label>
+                        <p class="setting-description">Default location for mounting network shares</p>
+                    </div>
+                    <div class="setting-control">
+                        <div class="path-input-group">
+                            <input type="text" id="mountLocation" class="path-input" readonly>
+                            <button type="button" id="browseMountLocation" class="browse-btn">Browse</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection Management Section -->
+            <div class="settings-section">
+                <h2>Connection Management</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Saved Connections</label>
+                        <p class="setting-description">Manage your saved network connections</p>
+                    </div>
+                    <div class="setting-control">
+                        <button type="button" id="manageConnections" class="action-btn">Manage Connections</button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label>Clear All Data</label>
+                        <p class="setting-description">Remove all saved connections and credentials</p>
+                    </div>
+                    <div class="setting-control">
+                        <button type="button" id="clearAllData" class="action-btn danger">Clear All</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-footer">
+            <div class="footer-buttons">
+                <button type="button" id="resetDefaults" class="btn-secondary">Reset to Defaults</button>
+                <div class="primary-buttons">
+                    <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
+                    <button type="button" id="saveBtn" class="btn-primary">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="statusMessage" class="status-message" style="display: none;"></div>
+    </div>
+
+    <script src="settings.js"></script>
+</body>
+</html>

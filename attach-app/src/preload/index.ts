@@ -37,6 +37,22 @@ contextBridge.exposeInMainWorld('api', {
     updateAutoMountSettings: (settings: {autoMountEnabled?: boolean, rememberCredentials?: boolean}) =>
         ipcRenderer.invoke('update-auto-mount-settings', settings),
     
+    // Comprehensive settings operations
+    openSettingsWindow: () =>
+        ipcRenderer.invoke('open-settings-window'),
+    getAllSettings: () =>
+        ipcRenderer.invoke('get-all-settings'),
+    saveAllSettings: (settings: any) =>
+        ipcRenderer.invoke('save-all-settings', settings),
+    selectDirectory: (currentPath?: string) =>
+        ipcRenderer.invoke('select-directory', currentPath),
+    getHomeDirectory: () =>
+        ipcRenderer.invoke('get-home-directory'),
+    clearAllData: () =>
+        ipcRenderer.invoke('clear-all-data'),
+    openConnectionManager: () =>
+        ipcRenderer.invoke('open-connection-manager'),
+    
     // Window operations
     openMountWindow: () => 
         ipcRenderer.invoke('open-mount-window'),

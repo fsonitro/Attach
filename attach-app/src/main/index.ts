@@ -1,9 +1,10 @@
 // Main entry point for the Electron application - handles app lifecycle and IPC communication
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'path';
+import os from 'os';
 import { createTray, updateTrayMenu } from './tray';
-import { createMainWindow, showMainWindow, createMountWindow } from './windows';
+import { createMainWindow, showMainWindow, createMountWindow, createSettingsWindow } from './windows';
 import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs } from './mount/smbService';
 import { readDirectoryContents } from './mount/fileSystem';
 import { connectionStore, SavedConnection } from './utils/connectionStore';
@@ -571,6 +572,141 @@ function setupIpcHandlers() {
             return {
                 success: false,
                 message: `Failed to restart network watcher: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+        }
+    });
+
+    // Settings-related IPC handlers
+    
+    // Open settings window
+    ipcMain.handle('open-settings-window', async (event) => {
+        createSettingsWindow();
+    });
+
+    // Get all settings
+    ipcMain.handle('get-all-settings', async (event) => {
+        return {
+            startAtLogin: connectionStore.getStartAtLogin(),
+            rememberCredentials: connectionStore.getRememberCredentials(),
+            autoMountEnabled: connectionStore.getAutoMountEnabled(),
+            mountLocation: connectionStore.getMountLocation(),
+            networkWatcher: connectionStore.getNetworkWatcherSettings()
+        };
+    });
+
+    // Save all settings
+    ipcMain.handle('save-all-settings', async (event, settings) => {
+        try {
+            if (settings.startAtLogin !== undefined) {
+                connectionStore.setStartAtLogin(settings.startAtLogin);
+                
+                // Set login item for macOS
+                app.setLoginItemSettings({
+                    openAtLogin: settings.startAtLogin,
+                    name: 'Attach'
+                });
+            }
+            
+            if (settings.rememberCredentials !== undefined) {
+                connectionStore.setRememberCredentials(settings.rememberCredentials);
+            }
+            
+            if (settings.autoMountEnabled !== undefined) {
+                connectionStore.setAutoMountEnabled(settings.autoMountEnabled);
+            }
+            
+            if (settings.mountLocation !== undefined) {
+                connectionStore.setMountLocation(settings.mountLocation);
+            }
+            
+            if (settings.networkWatcher !== undefined) {
+                connectionStore.setNetworkWatcherSettings(settings.networkWatcher);
+                
+                // Restart network watcher with new settings
+                if (networkWatcher) {
+                    networkWatcher.stop();
+                    networkWatcher = createNetworkWatcher(mountedShares);
+                    await networkWatcher.start();
+                }
+            }
+            
+            return { success: true, message: 'Settings saved successfully' };
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+            return { 
+                success: false, 
+                message: error instanceof Error ? error.message : 'Unknown error occurred' 
+            };
+        }
+    });
+
+    // Select directory for mount location
+    ipcMain.handle('select-directory', async (event, currentPath?: string) => {
+        try {
+            const result = await dialog.showOpenDialog({
+                title: 'Select Mount Location',
+                defaultPath: currentPath || os.homedir(),
+                properties: ['openDirectory', 'createDirectory']
+            });
+            
+            if (!result.canceled && result.filePaths.length > 0) {
+                return { success: true, path: result.filePaths[0] };
+            }
+            
+            return { success: false, path: null };
+        } catch (error) {
+            console.error('Failed to open directory dialog:', error);
+            return { success: false, path: null };
+        }
+    });
+
+    // Get user home directory
+    ipcMain.handle('get-home-directory', async (event) => {
+        return os.homedir();
+    });
+
+    // Clear all data
+    ipcMain.handle('clear-all-data', async (event) => {
+        try {
+            // First unmount all current shares
+            for (const [label, share] of mountedShares.entries()) {
+                try {
+                    await unmountSMBShare(share.mountPoint);
+                    mountedShares.delete(label);
+                } catch (error) {
+                    console.error(`Failed to unmount ${label}:`, error);
+                }
+            }
+            
+            // Clear all stored connections and settings
+            await connectionStore.clearAll();
+            
+            // Update tray menu
+            updateTrayMenu(mountedShares);
+            
+            return { success: true, message: 'All data cleared successfully' };
+        } catch (error) {
+            console.error('Failed to clear all data:', error);
+            return { 
+                success: false, 
+                message: error instanceof Error ? error.message : 'Unknown error occurred' 
+            };
+        }
+    });
+
+    // Open connection manager (placeholder - could be a separate window or modal)
+    ipcMain.handle('open-connection-manager', async (event) => {
+        // For now, we'll just return the connections data
+        // This could be expanded to open a dedicated connection management window
+        try {
+            const connections = await connectionStore.getConnections();
+            return { success: true, connections };
+        } catch (error) {
+            console.error('Failed to get connections:', error);
+            return { 
+                success: false, 
+                connections: [],
+                message: error instanceof Error ? error.message : 'Unknown error occurred' 
             };
         }
     });

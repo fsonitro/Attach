@@ -19,6 +19,14 @@ export interface ConnectionSettings {
     recentConnections: string[]; // Array of connection IDs, most recent first
     autoMountEnabled: boolean;
     rememberCredentials: boolean;
+    startAtLogin: boolean;
+    networkWatcher: {
+        enabled: boolean;
+        checkInterval: number; // seconds
+        retryAttempts: number;
+        retryDelay: number; // seconds
+    };
+    mountLocation: string; // Default mount location
 }
 
 const KEYCHAIN_SERVICE = 'Attach';
@@ -32,7 +40,15 @@ class ConnectionStore {
                 connections: [],
                 recentConnections: [],
                 autoMountEnabled: true,
-                rememberCredentials: true
+                rememberCredentials: true,
+                startAtLogin: false,
+                networkWatcher: {
+                    enabled: true,
+                    checkInterval: 15,
+                    retryAttempts: 5,
+                    retryDelay: 2
+                },
+                mountLocation: `${process.env.HOME}/mounts`
             },
             name: 'connections',
             // Enable encryption for sensitive data
@@ -245,6 +261,50 @@ class ConnectionStore {
 
     setRememberCredentials(enabled: boolean): void {
         this.store.set('rememberCredentials', enabled);
+    }
+
+    // Start at login settings
+    getStartAtLogin(): boolean {
+        return this.store.get('startAtLogin', false);
+    }
+
+    setStartAtLogin(enabled: boolean): void {
+        this.store.set('startAtLogin', enabled);
+    }
+
+    // Network watcher settings
+    getNetworkWatcherSettings() {
+        return this.store.get('networkWatcher', {
+            enabled: true,
+            checkInterval: 15,
+            retryAttempts: 5,
+            retryDelay: 2
+        });
+    }
+
+    setNetworkWatcherSettings(settings: Partial<ConnectionSettings['networkWatcher']>): void {
+        const current = this.getNetworkWatcherSettings();
+        this.store.set('networkWatcher', { ...current, ...settings });
+    }
+
+    // Mount location settings
+    getMountLocation(): string {
+        return this.store.get('mountLocation', `${process.env.HOME}/mounts`);
+    }
+
+    setMountLocation(location: string): void {
+        this.store.set('mountLocation', location);
+    }
+
+    // Get all settings for settings window
+    getAllSettings() {
+        return {
+            autoMountEnabled: this.getAutoMountEnabled(),
+            rememberCredentials: this.getRememberCredentials(),
+            startAtLogin: this.getStartAtLogin(),
+            networkWatcher: this.getNetworkWatcherSettings(),
+            mountLocation: this.getMountLocation()
+        };
     }
 
     // Get connection by share path and username (for backwards compatibility)
