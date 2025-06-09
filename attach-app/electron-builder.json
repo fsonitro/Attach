@@ -10,7 +10,7 @@
   ],
   "mac": {
     "category": "public.app-category.utilities",
-    "icon": "assets/icons/tray-icon.png",
+    "icon": "assets/icons/folders.png",
     "target": [
       "dmg",
       "zip"
@@ -20,14 +20,14 @@
     "target": [
       "nsis"
     ],
-    "icon": "assets/icons/tray-icon.png"
+    "icon": "assets/icons/folders.png"
   },
   "linux": {
     "target": [
       "AppImage",
       "deb"
     ],
-    "icon": "assets/icons/tray-icon.png"
+    "icon": "assets/icons/folders.png"
   },
   "build": {
     "asar": true,

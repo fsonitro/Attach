@@ -273,19 +273,73 @@
         }
         
         async function openFolder() {
+            const openButton = document.querySelector('.action-btn:nth-child(1)'); // First action button
+            const originalText = openButton ? openButton.textContent : 'Open Folder';
+            
             try {
                 if (window.api) {
+                    // Show loading state
+                    if (openButton) {
+                        openButton.textContent = 'Opening...';
+                        openButton.disabled = true;
+                        openButton.style.opacity = '0.6';
+                    }
+                    
                     const shares = await window.api.getMountedShares();
                     if (shares.length > 0) {
-                        await window.api.openInFinder(shares[0].mountPoint);
+                        // Add timeout to prevent indefinite loading
+                        const openPromise = window.api.openInFinder(shares[0].mountPoint);
+                        const timeoutPromise = new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error('Operation timed out')), 10000); // 10 second timeout
+                        });
+                        
+                        await Promise.race([openPromise, timeoutPromise]);
+                        
+                        // Success - button will reset after short delay
+                        if (openButton) {
+                            openButton.textContent = 'Opened!';
+                            setTimeout(() => {
+                                openButton.textContent = originalText;
+                                openButton.disabled = false;
+                                openButton.style.opacity = '1';
+                            }, 1500);
+                        }
                     } else {
                         alert('No mounted shares found. Please mount a share first.');
+                        // Reset button immediately for this case
+                        if (openButton) {
+                            openButton.textContent = originalText;
+                            openButton.disabled = false;
+                            openButton.style.opacity = '1';
+                        }
                     }
                 } else {
                     alert('Service temporarily unavailable. Please restart the application.');
+                    if (openButton) {
+                        openButton.textContent = originalText;
+                        openButton.disabled = false;
+                        openButton.style.opacity = '1';
+                    }
                 }
             } catch (error) {
-                alert('Failed to open folder. Please try again.');
+                console.error('Error opening folder:', error);
+                
+                // Determine error type and show appropriate message
+                const errorMessage = error.message || 'Unknown error';
+                if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+                    alert('Network share is taking too long to respond. Check the system notifications for updates.');
+                } else if (errorMessage.includes('not responding') || errorMessage.includes('unreachable')) {
+                    alert('Network share is not accessible. Check your connection and try again.');
+                } else {
+                    alert('Failed to open folder. Please try again or check system notifications for details.');
+                }
+                
+                // Reset button state
+                if (openButton) {
+                    openButton.textContent = originalText;
+                    openButton.disabled = false;
+                    openButton.style.opacity = '1';
+                }
             }
         }
 

@@ -43,15 +43,113 @@ export function updateTrayMenu(shares?: Map<string, any>) {
         submenu: [
             {
                 label: 'Open in Finder',
-                click: () => {
-                    shell.openPath(share.mountPoint);
+                click: async () => {
+                    try {
+                        // Import notifications for feedback
+                        const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+                        
+                        // Immediate user feedback
+                        await notifyNetworkOperationInProgress(share.label);
+                        
+                        // Use safe path opening with aggressive timeout
+                        const { safeOpenPath } = require('./mount/fileSystem');
+                        const safetyCheckPromise = safeOpenPath(share.mountPoint);
+                        const timeoutPromise = new Promise<{success: boolean, error?: string}>((resolve) => {
+                            setTimeout(() => {
+                                resolve({
+                                    success: false,
+                                    error: 'Network share is not responding'
+                                });
+                            }, 3000); // 3 second timeout
+                        });
+                        
+                        const safetyCheck = await Promise.race([safetyCheckPromise, timeoutPromise]);
+                        
+                        if (!safetyCheck.success) {
+                            await notifyNetworkOperationFailed(share.label, safetyCheck.error || 'Unable to access share');
+                            
+                            if (process.env.NODE_ENV === 'development') {
+                                console.error(`Cannot open ${share.label}: ${safetyCheck.error}`);
+                            }
+                            return;
+                        }
+                        
+                        // Attempt to open with timeout
+                        await Promise.race([
+                            shell.openPath(share.mountPoint),
+                            new Promise<void>((_, reject) => {
+                                setTimeout(() => reject(new Error('Open operation timed out')), 2000);
+                            })
+                        ]);
+                        
+                        await notifyNetworkOperationComplete(share.label);
+                        
+                    } catch (error) {
+                        const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+                        const errorMessage = error instanceof Error ? error.message : 'Failed to open share';
+                        
+                        await notifyNetworkOperationFailed(share.label, errorMessage);
+                        
+                        if (process.env.NODE_ENV === 'development') {
+                            console.error(`Failed to open ${share.label} in Finder:`, error);
+                        }
+                    }
                 }
             },
             {
                 label: 'Browse Contents',
-                click: () => {
-                    // This could show a submenu of folder contents in the future
-                    shell.openPath(share.mountPoint);
+                click: async () => {
+                    try {
+                        // Import notifications for feedback
+                        const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+                        
+                        // Immediate user feedback
+                        await notifyNetworkOperationInProgress(`${share.label} contents`);
+                        
+                        // Use safe path opening with aggressive timeout
+                        const { safeOpenPath } = require('./mount/fileSystem');
+                        const safetyCheckPromise = safeOpenPath(share.mountPoint);
+                        const timeoutPromise = new Promise<{success: boolean, error?: string}>((resolve) => {
+                            setTimeout(() => {
+                                resolve({
+                                    success: false,
+                                    error: 'Network share is not responding'
+                                });
+                            }, 3000); // 3 second timeout
+                        });
+                        
+                        const safetyCheck = await Promise.race([safetyCheckPromise, timeoutPromise]);
+                        
+                        if (!safetyCheck.success) {
+                            await notifyNetworkOperationFailed(`${share.label} contents`, safetyCheck.error || 'Unable to browse share');
+                            
+                            if (process.env.NODE_ENV === 'development') {
+                                console.error(`Cannot browse ${share.label}: ${safetyCheck.error}`);
+                            }
+                            return;
+                        }
+                        
+                        // This could show a submenu of folder contents in the future
+                        // For now, just open the folder like "Open in Finder"
+                        await Promise.race([
+                            shell.openPath(share.mountPoint),
+                            new Promise<void>((_, reject) => {
+                                setTimeout(() => reject(new Error('Browse operation timed out')), 2000);
+                            })
+                        ]);
+                        
+                        await notifyNetworkOperationComplete(`${share.label} contents`);
+                        
+                    } catch (error) {
+                        const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+                        const errorMessage = error instanceof Error ? error.message : 'Failed to browse share';
+                        
+                        await notifyNetworkOperationFailed(`${share.label} contents`, errorMessage);
+                        
+                        if (process.env.NODE_ENV === 'development') {
+                            console.error(`Failed to browse ${share.label}:`, error);
+                        }
+                    }
                 }
             },
             { type: 'separator' },

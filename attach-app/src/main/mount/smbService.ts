@@ -2,7 +2,13 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import keytar from 'keytar';
+import * as keytar from 'keytar';
+import { 
+    networkNotifications, 
+    notifyServerUnreachable, 
+    notifyMountFailure,
+    notifyNetworkTimeout 
+} from '../utils/networkNotifications';
 
 const execPromise = promisify(exec);
 
@@ -109,6 +115,25 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     const serverName = pathParts[0];
     const originalShareName = pathParts[1];
     
+    // Pre-mount connectivity check to prevent hanging (non-blocking)
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Checking connectivity to server: ${serverName}`);
+    }
+    
+    const connectivityCheck = await checkServerConnectivity(serverName, 5000);
+    if (!connectivityCheck.accessible) {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Server ${serverName} not reachable via ping/DNS, but attempting SMB connection anyway`);
+            console.log(`Reason: ${connectivityCheck.error}`);
+        }
+        // Don't block the mount - SMB has its own name resolution mechanisms
+        // Just log the issue for debugging
+    } else {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Server ${serverName} is reachable, proceeding with mount`);
+        }
+    }
+    
     // Try to find the correct case for the share name
     if (process.env.NODE_ENV === 'development') {
         console.log(`Looking for share: ${originalShareName} on server: ${serverName}`);
@@ -196,18 +221,25 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
         
         // Provide more helpful error messages (without exposing sensitive data)
         if (sanitizedErrorMessage.includes('Authentication') || sanitizedStderr.includes('Authentication')) {
+            await notifyMountFailure(serverName, 'Authentication failed');
             throw new Error('Authentication failed. Please check your username and password.');
         } else if (sanitizedErrorMessage.includes('No route to host') || sanitizedErrorMessage.includes('could not connect') || sanitizedStderr.includes('No route to host')) {
+            await notifyMountFailure(serverName, 'Could not connect to server');
             throw new Error('Could not connect to the server. Please check the server address and network connection.');
         } else if (sanitizedErrorMessage.includes('Permission denied') || sanitizedStderr.includes('Permission denied')) {
+            await notifyMountFailure(serverName, 'Permission denied');
             throw new Error('Permission denied. Please check your credentials and access rights.');
         } else if (sanitizedErrorMessage.includes('timeout')) {
+            await notifyNetworkTimeout('SMB mount operation');
             throw new Error('Connection timeout. The server might be unreachable or slow to respond.');
         } else if (sanitizedStderr.includes('mount_smbfs: server rejected the connection')) {
+            await notifyMountFailure(serverName, 'Server rejected connection');
             throw new Error('Server rejected the connection. Please check the server name and share path.');
         } else if (sanitizedStderr.includes('Operation not supported')) {
+            await notifyMountFailure(serverName, 'SMB operation not supported');
             throw new Error('SMB operation not supported. The server might not support SMB or the share might not exist.');
         } else {
+            await notifyMountFailure(serverName, 'Mount operation failed');
             // Return a generic error message that doesn't expose sensitive information
             throw new Error('Failed to mount SMB share. Please check your connection details and try again.');
         }
@@ -286,7 +318,7 @@ export const cleanupOrphanedMountDirs = async (): Promise<string[]> => {
 export const validateMountedShares = async (mountedShares: Map<string, any>): Promise<string[]> => {
     const disconnectedShares: string[] = [];
     
-    for (const [label, share] of mountedShares.entries()) {
+    for (const [label, share] of Array.from(mountedShares.entries())) {
         const isAccessible = await isMountPointAccessible(share.mountPoint);
         const isStillMounted = await isMountPoint(share.mountPoint);
         
@@ -386,4 +418,53 @@ export const storeCredentials = async (service: string, username: string, passwo
 // Function to retrieve stored credentials
 export const getStoredCredentials = async (service: string, username: string): Promise<string | null> => {
     return await keytar.getPassword(service, username);
+};
+
+// Pre-mount connectivity check to prevent hanging (improved for SMB)
+export const checkServerConnectivity = async (serverName: string, timeoutMs: number = 5000): Promise<{ accessible: boolean; error?: string }> => {
+    try {
+        // First, try to check SMB port (445) connectivity using nc (netcat)
+        try {
+            const ncResult = await execPromise(`nc -z -w 3 "${serverName}" 445`, { timeout: 5000 });
+            if (ncResult.stdout === '' && !ncResult.stderr) {
+                // nc exits cleanly when port is open
+                return { accessible: true };
+            }
+        } catch (ncError) {
+            // nc might not be available or connection failed, continue with other checks
+        }
+
+        // Second, try a simple ping to check if the server is reachable
+        try {
+            const pingResult = await execPromise(`ping -c 1 -W ${Math.floor(timeoutMs / 1000)} "${serverName}"`, { timeout: timeoutMs });
+            
+            if (pingResult.stdout.includes('1 packets transmitted, 1 received')) {
+                return { accessible: true };
+            }
+        } catch (pingError) {
+            // Ping failed, but this doesn't mean SMB won't work
+        }
+
+        // Third, try hostname resolution
+        try {
+            const hostResult = await execPromise(`host "${serverName}"`, { timeout: 3000 });
+            if (hostResult.stdout.includes('has address') || hostResult.stdout.includes('has IPv6')) {
+                // Host resolves but might not be pingable (common with Windows machines)
+                return { accessible: true };
+            }
+        } catch (hostError) {
+            // All basic checks failed
+        }
+        
+        // If all checks fail, it might still work via NetBIOS/SMB discovery
+        return { 
+            accessible: false, 
+            error: 'Standard connectivity checks failed, but SMB connection may still work via NetBIOS discovery' 
+        };
+    } catch (error) {
+        return { 
+            accessible: false, 
+            error: 'Unable to verify server connectivity. SMB connection may still work.' 
+        };
+    }
 };

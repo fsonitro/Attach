@@ -8,6 +8,12 @@ import { EventEmitter } from 'events';
 import { connectionStore, SavedConnection } from './connectionStore';
 import { mountSMBShare, isMountPointAccessible, isMountPoint } from '../mount/smbService';
 import { MountedShare } from '../../types';
+import { 
+    notifyNetworkLoss, 
+    notifyNetworkRestored,
+    notifyAutoMountSuccess,
+    notifyMountFailure 
+} from './networkNotifications';
 
 const execPromise = promisify(exec);
 
@@ -128,6 +134,8 @@ export class NetworkWatcher extends EventEmitter {
                         console.log('🟢 Network connection established');
                     }
                     this.emit('network-online');
+                    // Notify user of network restoration
+                    notifyNetworkRestored();
                     // Trigger auto-mount when network comes back online
                     await this.handleNetworkReconnection();
                 } else {
@@ -135,6 +143,8 @@ export class NetworkWatcher extends EventEmitter {
                         console.log('🔴 Network connection lost');
                     }
                     this.emit('network-offline');
+                    // Notify user of network loss
+                    notifyNetworkLoss();
                 }
             }
             
@@ -374,6 +384,8 @@ export class NetworkWatcher extends EventEmitter {
             if (process.env.NODE_ENV === 'development') {
                 console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
             }
+            // Notify user of successful auto-mount
+            notifyAutoMountSuccess(1);
             this.emit('mount-success', { connection, mountPoint });
 
         } catch (error) {
@@ -391,11 +403,15 @@ export class NetworkWatcher extends EventEmitter {
                 }
                 this.pendingAutoMounts.delete(connection.id);
                 this.mountAttempts.delete(connection.id);
+                // Notify user of permanent mount failure
+                notifyMountFailure(connection.label, `Maximum retry attempts (${this.MAX_RETRY_ATTEMPTS}) reached. Auto-mount disabled for this session.`);
                 this.emit('mount-failed-permanently', { connection, error: errorMessage });
             } else {
                 if (process.env.NODE_ENV === 'development') {
                     console.log(`⏳ Will retry ${connection.label} in next cycle`);
                 }
+                // For temporary failures, we could show a less prominent notification
+                // but let's avoid spam by only notifying on final failure
             }
         }
 

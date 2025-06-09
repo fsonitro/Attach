@@ -184,6 +184,86 @@ app.on('second-instance', () => {
     showMainWindow();
 });
 
+// Function to attempt reconnection of a disconnected share
+async function attemptShareReconnection(folderPath: string, shareName: string): Promise<void> {
+    try {
+        const { notifyReconnectionAttempt, notifyReconnectionSuccess, notifyReconnectionFailed } = require('./utils/networkNotifications');
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Attempting to reconnect share: ${shareName} at ${folderPath}`);
+        }
+        
+        // Notify user that reconnection is being attempted
+        await notifyReconnectionAttempt(shareName);
+        
+        // Check if we have connection info for this share
+        let connectionInfo: SavedConnection | null = null;
+        
+        // Try to find connection by matching mount path or share path
+        const connections = await connectionStore.getConnections();
+        for (const conn of connections) {
+            if (folderPath.includes(conn.label) || folderPath.includes(conn.sharePath.split('/').pop() || '')) {
+                connectionInfo = conn;
+                break;
+            }
+        }
+        
+        if (!connectionInfo) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`No saved connection found for ${shareName}`);
+            }
+            await notifyReconnectionFailed(shareName);
+            return;
+        }
+        
+        // Get the stored password
+        const password = await connectionStore.getPassword(connectionInfo.id);
+        if (!password) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`No stored password found for ${shareName}`);
+            }
+            await notifyReconnectionFailed(shareName);
+            return;
+        }
+        
+        // Attempt to remount
+        try {
+            const mountPoint = await mountSMBShare(connectionInfo.sharePath, connectionInfo.username, password);
+            
+            // Update our mounted shares tracking
+            const mountedShare: MountedShare = {
+                label: connectionInfo.label,
+                mountPoint,
+                sharePath: connectionInfo.sharePath,
+                username: connectionInfo.username,
+                mountedAt: new Date()
+            };
+            
+            mountedShares.set(connectionInfo.label, mountedShare);
+            updateTrayMenu(mountedShares);
+            
+            await notifyReconnectionSuccess(shareName);
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Successfully reconnected ${shareName}`);
+            }
+            
+        } catch (mountError) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`Failed to remount ${shareName}:`, mountError);
+            }
+            await notifyReconnectionFailed(shareName);
+        }
+        
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`Error during reconnection attempt for ${shareName}:`, error);
+        }
+        const { notifyReconnectionFailed } = require('./utils/networkNotifications');
+        await notifyReconnectionFailed(shareName);
+    }
+}
+
 // Setup IPC handlers for communication with renderer processes
 function setupIpcHandlers() {
     // Mount a network share
@@ -344,27 +424,112 @@ function setupIpcHandlers() {
         }
     });
 
-    // Open folder in Finder
+    // Open folder in Finder with enhanced timeout and user feedback
     ipcMain.handle('open-in-finder', async (event, folderPath: string) => {
         try {
-            await shell.openPath(folderPath);
+            // Import required modules
+            const { safeOpenPath } = require('./mount/fileSystem');
+            const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+            
+            // Immediately notify user that operation is starting
+            await notifyNetworkOperationInProgress(path.basename(folderPath));
+            
+            // Run safety check with aggressive timeout to prevent hanging
+            const safetyCheck = await Promise.race([
+                safeOpenPath(folderPath),
+                new Promise<{success: boolean, error: string}>((resolve) => {
+                    setTimeout(() => {
+                        resolve({
+                            success: false,
+                            error: 'Network share is taking too long to respond. The connection may be slow or unavailable.'
+                        });
+                    }, 3000); // 3 second max timeout to prevent UI blocking
+                })
+            ]);
+            
+            if (!safetyCheck.success) {
+                await notifyNetworkOperationFailed(path.basename(folderPath), safetyCheck.error || 'Unable to access path');
+                
+                // Check if it's a network share and offer reconnection
+                if (folderPath.includes('/Volumes/') || folderPath.includes('smb://')) {
+                    const shareName = path.basename(folderPath);
+                    // Schedule background reconnection attempt
+                    setImmediate(async () => {
+                        await attemptShareReconnection(folderPath, shareName);
+                    });
+                }
+                
+                throw new Error(safetyCheck.error || 'Unable to access path');
+            }
+            
+            // Attempt to open the path with timeout
+            await Promise.race([
+                shell.openPath(folderPath),
+                new Promise<void>((_, reject) => {
+                    setTimeout(() => {
+                        reject(new Error('Opening folder timed out'));
+                    }, 2000); // 2 second timeout for shell.openPath
+                })
+            ]);
+            
+            await notifyNetworkOperationComplete(path.basename(folderPath));
+            
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to open folder';
+            const shareName = path.basename(folderPath);
+            const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+            
             if (process.env.NODE_ENV === 'development') {
                 console.error('Failed to open path:', error);
             }
-            throw new Error('Failed to open folder');
+            
+            // Provide specific user feedback based on error type
+            if (errorMessage.includes('timeout') || errorMessage.includes('taking too long')) {
+                await notifyNetworkOperationFailed(shareName, 'Network share is not responding. Attempting to reconnect...');
+                
+                // Schedule background reconnection attempt
+                setImmediate(async () => {
+                    await attemptShareReconnection(folderPath, shareName);
+                });
+            } else {
+                await notifyNetworkOperationFailed(shareName, errorMessage);
+            }
+            
+            throw new Error(errorMessage);
         }
     });
 
-    // Get folder contents
+    // Get folder contents with enhanced timeout protection
     ipcMain.handle('get-folder-contents', async (event, folderPath: string): Promise<string[]> => {
         try {
-            return await readDirectoryContents(folderPath);
+            // Use enhanced readDirectoryContents with aggressive timeout
+            const contentsPromise = readDirectoryContents(folderPath);
+            const timeoutPromise = new Promise<string[]>((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error('Directory listing timed out - network share may be unresponsive'));
+                }, 5000); // 5 second timeout for directory listing
+            });
+            
+            return await Promise.race([contentsPromise, timeoutPromise]);
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to read directory contents';
+            
             if (process.env.NODE_ENV === 'development') {
                 console.error('Failed to read directory:', error);
             }
-            throw new Error('Failed to read directory contents');
+            
+            // Import notifications for folder contents errors
+            const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
+            
+            // Provide user feedback for directory listing failures
+            if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+                await notifyNetworkOperationFailed(
+                    path.basename(folderPath), 
+                    'Directory listing timed out. Network share may be slow or disconnected.'
+                );
+            }
+            
+            throw new Error(errorMessage);
         }
     });
 
