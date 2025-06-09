@@ -143,11 +143,8 @@ export class NetworkWatcher extends EventEmitter {
                         console.log('🔴 Network connection lost');
                     }
                     this.emit('network-offline');
-<<<<<<< HEAD
                     // Notify user of network loss
                     notifyNetworkLoss();
-=======
->>>>>>> parent of d074622 (Added network resilience)
                 }
             }
             

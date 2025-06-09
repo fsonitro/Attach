@@ -6,11 +6,19 @@ import os from 'os';
 import { createTray, updateTrayMenu } from './tray';
 import { createMainWindow, showMainWindow, createMountWindow, createSettingsWindow } from './windows';
 import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs } from './mount/smbService';
-import { readDirectoryContents } from './mount/fileSystem';
+import { readDirectoryContents, safeOpenPath } from './mount/fileSystem';
 import { connectionStore, SavedConnection } from './utils/connectionStore';
 import { createAutoMountService, AutoMountService } from './utils/autoMountService';
 import { createNetworkWatcher, NetworkWatcher } from './utils/networkWatcher';
 import { MountedShare, MountResult, UnmountResult } from '../types';
+import { 
+    notifyNetworkOperationInProgress, 
+    notifyNetworkOperationComplete, 
+    notifyNetworkOperationFailed,
+    notifyReconnectionAttempt,
+    notifyReconnectionSuccess,
+    notifyReconnectionFailed
+} from './utils/networkNotifications';
 
 // Global state to track mounted shares
 let mountedShares: Map<string, MountedShare> = new Map();
@@ -427,11 +435,6 @@ function setupIpcHandlers() {
     // Open folder in Finder with enhanced timeout and user feedback
     ipcMain.handle('open-in-finder', async (event, folderPath: string) => {
         try {
-<<<<<<< HEAD
-            // Import required modules
-            const { safeOpenPath } = require('./mount/fileSystem');
-            const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
-            
             // Immediately notify user that operation is starting
             await notifyNetworkOperationInProgress(path.basename(folderPath));
             
@@ -461,12 +464,6 @@ function setupIpcHandlers() {
                 }
                 
                 throw new Error(safetyCheck.error || 'Unable to access path');
-=======
-            await shell.openPath(folderPath);
-        } catch (error) {
-            if (process.env.NODE_ENV === 'development') {
-                console.error('Failed to open path:', error);
->>>>>>> parent of d074622 (Added network resilience)
             }
             
             // Attempt to open the path with timeout
@@ -484,7 +481,6 @@ function setupIpcHandlers() {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to open folder';
             const shareName = path.basename(folderPath);
-            const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
             
             if (process.env.NODE_ENV === 'development') {
                 console.error('Failed to open path:', error);
@@ -523,11 +519,7 @@ function setupIpcHandlers() {
             
             if (process.env.NODE_ENV === 'development') {
                 console.error('Failed to read directory:', error);
-<<<<<<< HEAD
             }
-            
-            // Import notifications for folder contents errors
-            const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
             
             // Provide user feedback for directory listing failures
             if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
@@ -538,10 +530,6 @@ function setupIpcHandlers() {
             }
             
             throw new Error(errorMessage);
-=======
-            }
-            throw new Error('Failed to read directory contents');
->>>>>>> parent of d074622 (Added network resilience)
         }
     });
 

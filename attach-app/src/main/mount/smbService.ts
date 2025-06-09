@@ -2,7 +2,6 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-<<<<<<< HEAD
 import * as keytar from 'keytar';
 import { 
     networkNotifications, 
@@ -10,9 +9,6 @@ import {
     notifyMountFailure,
     notifyNetworkTimeout 
 } from '../utils/networkNotifications';
-=======
-import keytar from 'keytar';
->>>>>>> parent of d074622 (Added network resilience)
 
 const execPromise = promisify(exec);
 

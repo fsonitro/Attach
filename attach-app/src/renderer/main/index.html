@@ -287,7 +287,6 @@
                     
                     const shares = await window.api.getMountedShares();
                     if (shares.length > 0) {
-<<<<<<< HEAD
                         // Add timeout to prevent indefinite loading
                         const openPromise = window.api.openInFinder(shares[0].mountPoint);
                         const timeoutPromise = new Promise((_, reject) => {
@@ -305,9 +304,6 @@
                                 openButton.style.opacity = '1';
                             }, 1500);
                         }
-=======
-                        await window.api.openInFinder(shares[0].mountPoint);
->>>>>>> parent of d074622 (Added network resilience)
                     } else {
                         alert('No mounted shares found. Please mount a share first.');
                         // Reset button immediately for this case
@@ -326,7 +322,6 @@
                     }
                 }
             } catch (error) {
-<<<<<<< HEAD
                 console.error('Error opening folder:', error);
                 
                 // Determine error type and show appropriate message
@@ -345,9 +340,6 @@
                     openButton.disabled = false;
                     openButton.style.opacity = '1';
                 }
-=======
-                alert('Failed to open folder. Please try again.');
->>>>>>> parent of d074622 (Added network resilience)
             }
         }
 

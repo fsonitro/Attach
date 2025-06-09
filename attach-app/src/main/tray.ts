@@ -3,6 +3,12 @@ import { app, Tray, Menu, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { showMainWindow, createMountWindow, createSettingsWindow, quitApplication } from './windows';
 import { unmountSMBShare } from './mount/smbService';
+import { safeOpenPath } from './mount/fileSystem';
+import { 
+    notifyNetworkOperationInProgress, 
+    notifyNetworkOperationComplete, 
+    notifyNetworkOperationFailed 
+} from './utils/networkNotifications';
 
 let tray: Tray | null = null;
 let mountedShares: Map<string, any> = new Map(); // We'll update this from main process
@@ -45,14 +51,10 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 label: 'Open in Finder',
                 click: async () => {
                     try {
-                        // Import notifications for feedback
-                        const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
-                        
                         // Immediate user feedback
                         await notifyNetworkOperationInProgress(share.label);
                         
                         // Use safe path opening with aggressive timeout
-                        const { safeOpenPath } = require('./mount/fileSystem');
                         const safetyCheckPromise = safeOpenPath(share.mountPoint);
                         const timeoutPromise = new Promise<{success: boolean, error?: string}>((resolve) => {
                             setTimeout(() => {
@@ -100,14 +102,10 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 label: 'Browse Contents',
                 click: async () => {
                     try {
-                        // Import notifications for feedback
-                        const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
-                        
                         // Immediate user feedback
                         await notifyNetworkOperationInProgress(`${share.label} contents`);
                         
                         // Use safe path opening with aggressive timeout
-                        const { safeOpenPath } = require('./mount/fileSystem');
                         const safetyCheckPromise = safeOpenPath(share.mountPoint);
                         const timeoutPromise = new Promise<{success: boolean, error?: string}>((resolve) => {
                             setTimeout(() => {
