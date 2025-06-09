@@ -4,7 +4,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'path';
 import os from 'os';
 import { createTray, updateTrayMenu } from './tray';
-import { createMainWindow, showMainWindow, createMountWindow, createSettingsWindow } from './windows';
+import { createMainWindow, showMainWindow, createMountWindow, createSettingsWindow, createAboutWindow, closeAboutWindow } from './windows';
 import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs } from './mount/smbService';
 import { readDirectoryContents, safeOpenPath } from './mount/fileSystem';
 import { connectionStore, SavedConnection } from './utils/connectionStore';
@@ -986,6 +986,63 @@ function setupIpcHandlers() {
                 connections: [],
                 message: 'Failed to get connections'
             };
+        }
+    });
+
+    // About window handlers
+    ipcMain.handle('open-about-window', async (event) => {
+        createAboutWindow();
+    });
+
+    ipcMain.handle('close-about-window', async (event) => {
+        closeAboutWindow();
+    });
+
+    // System information handler
+    ipcMain.handle('get-system-info', async (event) => {
+        try {
+            const packageJson = require('../../package.json');
+            const assetsPath = app.isPackaged 
+                ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets')
+                : path.join(process.cwd(), 'assets');
+            
+            return {
+                appVersion: packageJson.version || '1.0.0',
+                electronVersion: process.versions.electron,
+                nodeVersion: process.versions.node,
+                platform: `${os.type()} ${os.release()}`,
+                arch: os.arch(),
+                assetsPath: assetsPath
+            };
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to get system info:', error);
+            }
+            const assetsPath = app.isPackaged 
+                ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets')
+                : path.join(process.cwd(), 'assets');
+            
+            return {
+                appVersion: '1.0.0',
+                electronVersion: process.versions.electron,
+                nodeVersion: process.versions.node,
+                platform: `${os.type()} ${os.release()}`,
+                arch: os.arch(),
+                assetsPath: assetsPath
+            };
+        }
+    });
+
+    // Open external URL handler
+    ipcMain.handle('open-external', async (event, url: string) => {
+        try {
+            await shell.openExternal(url);
+            return { success: true };
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to open external URL:', error);
+            }
+            return { success: false, error: 'Failed to open URL' };
         }
     });
 }

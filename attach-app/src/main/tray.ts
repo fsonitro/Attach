@@ -1,7 +1,7 @@
 // src/main/tray.ts
 import { app, Tray, Menu, BrowserWindow, shell } from 'electron';
 import path from 'path';
-import { showMainWindow, createMountWindow, createSettingsWindow, quitApplication } from './windows';
+import { showMainWindow, createMountWindow, createSettingsWindow, createAboutWindow, quitApplication } from './windows';
 import { unmountSMBShare } from './mount/smbService';
 
 let tray: Tray | null = null;
@@ -160,6 +160,12 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             label: 'Settings',
             click: () => {
                 createSettingsWindow();
+            }
+        },
+        {
+            label: 'About Attach',
+            click: () => {
+                createAboutWindow();
             }
         },
         { type: 'separator' },

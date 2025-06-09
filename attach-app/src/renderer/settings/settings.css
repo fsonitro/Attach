@@ -1,4 +1,4 @@
-/* Settings Window Styles - macOS Finder Style */
+/* Settings Window Styles - Dark macOS Style */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -11,8 +11,8 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
-    background: #f6f6f6; /* macOS window background */
-    color: #1d1d1f; /* macOS text color */
+    background: #2c2c2e; /* Dark macOS window background */
+    color: #ffffff; /* Dark mode text color */
     height: 100%;
     margin: 0;
     padding: 0;
@@ -30,19 +30,21 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #f6f6f6;
+    background: #2c2c2e;
     /* Performance optimizations */
     will-change: auto;
     transform: translateZ(0);
+    /* Content animation */
+    animation: fadeIn 0.4s ease-out;
 }
 
 /* Header */
 .settings-header {
-    background: #f6f6f6;
-    color: #1d1d1f;
+    background: #2c2c2e;
+    color: #ffffff;
     padding: 24px 32px 20px 32px;
     text-align: center;
-    border-bottom: 1px solid #d1d1d6;
+    border-bottom: 1px solid rgba(99, 99, 102, 0.3);
 }
 
 .settings-header h1 {
@@ -54,7 +56,7 @@ body {
 
 .subtitle {
     font-size: 13px;
-    color: #86868b;
+    color: #98989d;
     font-weight: 400;
 }
 
@@ -76,10 +78,10 @@ body {
 .settings-section h2 {
     font-size: 15px;
     font-weight: 600;
-    color: #1d1d1f;
+    color: #ffffff;
     margin-bottom: 16px;
     padding-bottom: 6px;
-    border-bottom: 1px solid #e5e5ea;
+    border-bottom: 1px solid rgba(99, 99, 102, 0.3);
     letter-spacing: -0.01em;
 }
 
@@ -88,7 +90,7 @@ body {
     justify-content: space-between;
     align-items: flex-start;
     padding: 12px 0;
-    border-bottom: 1px solid #f2f2f7;
+    border-bottom: 1px solid rgba(99, 99, 102, 0.2);
 }
 
 .setting-item:last-child {
@@ -103,7 +105,7 @@ body {
 .setting-info label {
     font-size: 13px;
     font-weight: 500;
-    color: #1d1d1f;
+    color: #ffffff;
     display: block;
     margin-bottom: 4px;
     letter-spacing: -0.01em;
@@ -111,8 +113,9 @@ body {
 
 .setting-description {
     font-size: 11px;
-    color: #86868b;
+    color: #98989d;
     line-height: 1.4;
+    margin: 0;
 }
 
 .setting-control {
@@ -142,10 +145,10 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #e5e5ea;
+    background-color: rgba(99, 99, 102, 0.3);
     transition: 0.2s ease;
     border-radius: 24px;
-    border: 1px solid #d1d1d6;
+    border: 1px solid rgba(99, 99, 102, 0.5);
 }
 
 .toggle-slider:before {
@@ -171,23 +174,23 @@ input:checked + .toggle-slider:before {
 }
 
 .toggle-slider:hover {
-    background-color: #d1d1d6;
+    background-color: rgba(99, 99, 102, 0.5);
 }
 
 input:checked + .toggle-slider:hover {
-    background-color: #0051d5;
+    background-color: #0056cc;
 }
 
-/* Number inputs - macOS Style */
+/* Number inputs - Dark macOS Style */
 .number-input {
     width: 60px;
     padding: 4px 8px;
-    border: 1px solid #1d1d1f;
+    border: 1px solid rgba(99, 99, 102, 0.5);
     border-radius: 4px;
     font-size: 13px;
     text-align: center;
-    background-color: #ffffff;
-    color: #1d1d1f;
+    background-color: rgba(58, 58, 60, 0.8);
+    color: #ffffff;
     font-weight: 500;
 }
 
@@ -195,6 +198,7 @@ input:checked + .toggle-slider:hover {
     outline: none;
     border-color: #007aff;
     box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    background-color: rgba(58, 58, 60, 1.0);
 }
 
 /* Path input - macOS Style */
@@ -314,11 +318,11 @@ input:checked + .toggle-slider:hover {
     opacity: 1;
 }
 
-/* Footer - macOS Style */
+/* Footer - Dark macOS Style */
 .settings-footer {
     padding: 16px 32px 20px 32px;
-    background-color: #f6f6f6;
-    border-top: 1px solid #d1d1d6;
+    background-color: #2c2c2e;
+    border-top: 1px solid rgba(99, 99, 102, 0.3);
 }
 
 .footer-buttons {
@@ -350,13 +354,18 @@ input:checked + .toggle-slider:hover {
 
 .btn-primary {
     background: #007aff;
-    color: white;
+    color: #ffffff;
 }
 
 .btn-primary:hover {
-    background: #0051d5;
+    background: #0056cc;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+    background: #004999;
 }
 
 .btn-primary:disabled {
@@ -367,15 +376,20 @@ input:checked + .toggle-slider:hover {
 }
 
 .btn-secondary {
-    background-color: #e5e5ea;
-    color: #1d1d1f;
-    border: 1px solid #d1d1d6;
+    background-color: rgba(99, 99, 102, 0.3);
+    color: #ffffff;
+    border: 1px solid rgba(99, 99, 102, 0.5);
 }
 
 .btn-secondary:hover {
-    background-color: #d1d1d6;
+    background-color: rgba(99, 99, 102, 0.5);
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn-secondary:active {
+    transform: translateY(0);
+    background-color: rgba(99, 99, 102, 0.4);
 }
 
 /* Status message - macOS Style */
@@ -628,190 +642,15 @@ input:checked + .toggle-slider:hover {
     }
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    body {
-        background: #1e1e1e;
-        color: #ffffff;
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
     }
-    
-    .settings-window {
-        background: #1e1e1e;
-    }
-    
-    .settings-header {
-        background: #1e1e1e;
-        color: #ffffff;
-        border-bottom-color: #2c2c2e;
-    }
-    
-    .settings-header h1 {
-        color: #ffffff;
-    }
-    
-    .subtitle {
-        color: #98989d;
-    }
-    
-    .settings-section h2 {
-        color: #ffffff;
-        border-bottom-color: #48484a;
-    }
-    
-    .setting-item {
-        border-bottom-color: #2c2c2e;
-    }
-    
-    .setting-info label {
-        color: #ffffff;
-    }
-    
-    .setting-description {
-        color: #98989d;
-    }
-    
-    .toggle-slider {
-        background-color: #48484a;
-        border-color: #6d6d70;
-    }
-    
-    .toggle-slider:before {
-        background-color: #ffffff;
-    }
-    
-    .toggle-slider:hover {
-        background-color: #6d6d70;
-    }
-    
-    .number-input {
-        background-color: #2c2c2e;
-        border-color: #ffffff;
-        color: #ffffff;
-        font-weight: 500;
-    }
-    
-    .path-input {
-        background-color: #2c2c2e;
-        border-color: #48484a;
-        color: #ffffff;
-    }
-    
-    .connections-dropdown {
-        background-color: #2c2c2e;
-        border-color: #48484a;
-        color: #ffffff;
-        background-image: url('data:image/svg+xml;charset=US-ASCII,<svg width="10" height="6" viewBox="0 0 10 6" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l4 4 4-4" stroke="%23ffffff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
-    }
-    
-    .connections-dropdown:disabled {
-        background-color: #1e1e1e;
-    }
-    
-    .connections-dropdown option {
-        background: #2c2c2e;
-        color: #ffffff;
-    }
-    
-    .browse-btn,
-    .action-btn {
-        background-color: #007aff;
-        border-color: #007aff;
-        color: #ffffff;
-    }
-    
-    .browse-btn:hover,
-    .action-btn:hover {
-        background-color: #0051d5;
-        border-color: #0051d5;
-    }
-    
-    .action-btn.danger {
-        background-color: #3a1e1e;
-        border-color: #8b1a1a;
-        color: #ef5350;
-    }
-    
-    .action-btn.danger:hover {
-        background-color: #4a2424;
-    }
-    
-    .settings-footer {
-        background-color: #1e1e1e;
-        border-top-color: #2c2c2e;
-    }
-    
-    .btn-secondary {
-        background-color: #2c2c2e;
-        color: #ffffff;
-        border-color: #48484a;
-    }
-    
-    .btn-secondary:hover {
-        background-color: #3a3a3c;
-    }
-    
-    .status-message.success {
-        background-color: #1e3a1e;
-        color: #81c784;
-        border-color: #4caf50;
-    }
-    
-    .status-message.error {
-        background-color: #3a1e1e;
-        color: #ef5350;
-        border-color: #f44336;
-    }
-    
-    .status-message.info {
-        background-color: #1e2a3a;
-        color: #64b5f6;
-        border-color: #2196f3;
-    }
-    
-    .connection-management-panel {
-        background-color: #2c2c2e;
-        border-color: #48484a;
-    }
-    
-    .connection-details h3 {
-        color: #ffffff;
-        border-bottom-color: #48484a;
-    }
-    
-    .form-group label {
-        color: #98989d;
-    }
-    
-    .form-input {
-        background-color: #2c2c2e;
-        border-color: #48484a;
-        color: #ffffff;
-    }
-    
-    .form-input:read-only {
-        background-color: #1e1e1e;
-        color: #98989d;
-    }
-    
-    .checkbox-label {
-        color: #ffffff !important;
-    }
-    
-    .connection-metadata {
-        background-color: #1e1e1e;
-        border-color: #48484a;
-    }
-    
-    .metadata-item strong {
-        color: #98989d;
-    }
-    
-    .metadata-item span {
-        color: #ffffff;
-    }
-    
-    .connection-actions {
-        border-top-color: #48484a;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 

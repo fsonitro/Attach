@@ -1,4 +1,4 @@
-/* Mount Window Styles - macOS Finder Style */
+/* Mount Window Styles - Dark macOS Style */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -11,8 +11,8 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
-    background: #f6f6f6; /* macOS window background */
-    color: #1d1d1f; /* macOS text color */
+    background: #2c2c2e; /* Dark macOS window background */
+    color: #ffffff; /* Dark mode text color */
     height: 100%;
     margin: 0;
     padding: 0;
@@ -33,10 +33,12 @@ body {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    background: #f6f6f6;
+    background: #2c2c2e;
     /* Performance optimizations */
     will-change: auto;
     transform: translateZ(0);
+    /* Content animation */
+    animation: fadeIn 0.4s ease-out;
 }
 
 .header {
@@ -48,14 +50,14 @@ body {
     margin: 0 0 6px 0;
     font-size: 22px;
     font-weight: 700;
-    color: #1d1d1f;
+    color: #ffffff;
     letter-spacing: -0.02em;
 }
 
 .subtitle {
     margin: 0;
     font-size: 13px;
-    color: #86868b;
+    color: #98989d;
     font-weight: 400;
 }
 
@@ -75,7 +77,7 @@ body {
 .form-group label {
     font-size: 13px;
     font-weight: 500;
-    color: #1d1d1f;
+    color: #ffffff;
     margin-bottom: 4px;
     letter-spacing: -0.01em;
 }
@@ -84,10 +86,10 @@ body {
 .form-group input[type="password"],
 .form-group select {
     padding: 8px 12px;
-    border: 1px solid #d1d1d6;
+    border: 1px solid rgba(99, 99, 102, 0.5);
     border-radius: 6px;
-    background: #ffffff;
-    color: #1d1d1f;
+    background: rgba(58, 58, 60, 0.8);
+    color: #ffffff;
     font-size: 13px;
     transition: all 0.15s ease;
     height: 32px;
@@ -99,10 +101,12 @@ body {
     outline: none;
     border-color: #007aff;
     box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    background: rgba(58, 58, 60, 1.0);
+}
 }
 
 .form-group input::placeholder {
-    color: #86868b;
+    color: #98989d;
 }
 
 /* Dropdown specific styles */
@@ -111,7 +115,7 @@ body {
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
-    background-image: url('data:image/svg+xml;charset=US-ASCII,<svg width="10" height="6" viewBox="0 0 10 6" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l4 4 4-4" stroke="%23999" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    background-image: url('data:image/svg+xml;charset=US-ASCII,<svg width="10" height="6" viewBox="0 0 10 6" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l4 4 4-4" stroke="%23ffffff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
     background-repeat: no-repeat;
     background-position: right 12px center;
     background-size: 10px 6px;
@@ -119,14 +123,14 @@ body {
 }
 
 .saved-connections-dropdown option {
-    background: #ffffff;
-    color: #1d1d1f;
+    background: rgba(58, 58, 60, 0.8);
+    color: #ffffff;
     padding: 8px;
 }
 
 .input-hint {
     font-size: 11px;
-    color: #86868b;
+    color: #98989d;
     font-style: normal;
 }
 
@@ -140,7 +144,7 @@ body {
     align-items: center;
     cursor: pointer;
     font-size: 13px;
-    color: #1d1d1f;
+    color: #ffffff;
     gap: 8px;
     padding: 4px 0;
 }
@@ -152,9 +156,9 @@ body {
 .checkmark {
     width: 16px;
     height: 16px;
-    border: 1px solid #d1d1d6;
+    border: 1px solid rgba(99, 99, 102, 0.5);
     border-radius: 3px;
-    background: #ffffff;
+    background: rgba(58, 58, 60, 0.8);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -178,15 +182,15 @@ body {
     border-color: #007aff;
 }
 
-/* System Info Notice - macOS Style */
+/* System Info Notice - Dark macOS Style */
 .system-info {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    background: #e8f4fd;
+    background: rgba(58, 58, 60, 0.8);
     border-radius: 6px;
-    border: 1px solid #b8daff;
+    border: 1px solid rgba(99, 99, 102, 0.3);
     margin: 12px 0;
 }
 
@@ -199,11 +203,11 @@ body {
 .system-info p {
     margin: 0;
     font-size: 12px;
-    color: #1d1d1f;
+    color: #ffffff;
     line-height: 1.4;
 }
 
-/* Buttons - macOS Style */
+/* Buttons - Dark macOS Style */
 .form-actions {
     display: flex;
     gap: 12px;
@@ -212,7 +216,7 @@ body {
 }
 
 .btn {
-    padding: 6px 16px;
+    padding: 8px 20px;
     border-radius: 6px;
     border: none;
     font-size: 13px;
@@ -225,38 +229,46 @@ body {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    height: 28px;
+    height: 36px;
     letter-spacing: -0.01em;
+    outline: none;
+    font-family: inherit;
 }
 
 .btn-secondary {
-    background: #e5e5ea;
-    color: #1d1d1f;
-    border: 1px solid #d1d1d6;
+    background: rgba(99, 99, 102, 0.3);
+    color: #ffffff;
+    border: 1px solid rgba(99, 99, 102, 0.5);
     flex: 1;
 }
 
 .btn-secondary:hover {
-    background: #d1d1d6;
+    background: rgba(99, 99, 102, 0.5);
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn-secondary:active {
+    transform: translateY(0);
+    background: rgba(99, 99, 102, 0.4);
 }
 
 .btn-primary {
     background: #007aff;
-    color: white;
+    color: #ffffff;
     flex: 2;
     font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: #0051d5;
+    background: #0056cc;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
 }
 
-.btn:active {
+.btn-primary:active {
     transform: translateY(0);
+    background: #004999;
 }
 
 .btn:disabled {
@@ -280,7 +292,7 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Status Messages - macOS Style */
+/* Status Messages - Dark macOS Style */
 .status-message {
     margin-top: 16px;
     padding: 10px 12px;
@@ -292,21 +304,21 @@ body {
 }
 
 .status-message.success {
-    background: #e8f5e8;
+    background: rgba(76, 175, 80, 0.1);
     border-color: #4caf50;
-    color: #2e7d32;
+    color: #81c784;
 }
 
 .status-message.error {
-    background: #ffebee;
+    background: rgba(244, 67, 54, 0.1);
     border-color: #f44336;
-    color: #c62828;
+    color: #ef5350;
 }
 
 .status-message.loading {
-    background: #fff8e1;
+    background: rgba(255, 193, 7, 0.1);
     border-color: #ffc107;
-    color: #f57c00;
+    color: #ffb74d;
 }
 
 @keyframes slideIn {
@@ -320,98 +332,15 @@ body {
     }
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    body {
-        background: #1e1e1e;
-        color: #ffffff;
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
     }
-    
-    .container {
-        background: #1e1e1e;
-    }
-    
-    .header h1 {
-        color: #ffffff;
-    }
-    
-    .subtitle {
-        color: #98989d;
-    }
-    
-    .form-group label {
-        color: #ffffff;
-    }
-    
-    .form-group input[type="text"],
-    .form-group input[type="password"],
-    .form-group select {
-        background: #2c2c2e;
-        border-color: #48484a;
-        color: #ffffff;
-    }
-    
-    .form-group input[type="text"]:focus,
-    .form-group input[type="password"]:focus,
-    .form-group select:focus {
-        border-color: #007aff;
-        background: #3a3a3c;
-    }
-    
-    .form-group input::placeholder {
-        color: #98989d;
-    }
-    
-    .saved-connections-dropdown option {
-        background: #2c2c2e;
-        color: #ffffff;
-    }
-    
-    .input-hint {
-        color: #98989d;
-    }
-    
-    .checkbox-label {
-        color: #ffffff;
-    }
-    
-    .checkmark {
-        background: #2c2c2e;
-        border-color: #48484a;
-    }
-    
-    .system-info {
-        background: #1c2c3a;
-        border-color: #2c5aa0;
-    }
-    
-    .system-info p {
-        color: #ffffff;
-    }
-    
-    .btn-secondary {
-        background: #2c2c2e;
-        color: #ffffff;
-        border-color: #48484a;
-    }
-    
-    .btn-secondary:hover {
-        background: #3a3a3c;
-    }
-    
-    .status-message.success {
-        background: #1e3a1e;
-        color: #81c784;
-    }
-    
-    .status-message.error {
-        background: #3a1e1e;
-        color: #ef5350;
-    }
-    
-    .status-message.loading {
-        background: #3a351e;
-        color: #ffb74d;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 

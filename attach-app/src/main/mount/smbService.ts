@@ -4,10 +4,9 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as keytar from 'keytar';
 import { 
-    networkNotifications, 
-    notifyServerUnreachable, 
     notifyMountFailure,
-    notifyNetworkTimeout 
+    notifyNetworkTimeout,
+    notifyServerUnreachable 
 } from '../utils/networkNotifications';
 
 const execPromise = promisify(exec);
@@ -126,6 +125,8 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
             console.log(`Server ${serverName} not reachable via ping/DNS, but attempting SMB connection anyway`);
             console.log(`Reason: ${connectivityCheck.error}`);
         }
+        // Notify user about connectivity issues while still allowing the mount attempt
+        await notifyServerUnreachable(serverName);
         // Don't block the mount - SMB has its own name resolution mechanisms
         // Just log the issue for debugging
     } else {

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Attach</title>
+    <!-- Preload critical CSS for faster rendering -->
+    <link rel="preload" href="about.css" as="style">
+    <link rel="stylesheet" href="about.css">
+    <!-- Optimize font loading -->
+    <style>
+        /* Critical CSS for initial render */
+        body { 
+            background: #2c2c2e; 
+            margin: 0; 
+            padding: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="about-window">
+        <div class="about-content">
+            <!-- App Icon -->
+            <div class="app-icon">
+                <img src="../../../assets/icons/folders-icon.svg" alt="Attach Icon" id="appIcon">
+            </div>
+            
+            <!-- App Name -->
+            <h1 class="app-name">Attach</h1>
+            
+            <!-- Version -->
+            <div class="app-version" id="appVersion">Version 1.0.0</div>
+            
+            <!-- Copyright -->
+            <div class="app-copyright">
+                Copyright © <span id="currentYear">2024</span> Felipe. All rights reserved.
+            </div>
+            
+            <!-- Additional Info -->
+            <div class="app-description">
+                Network Share Mounter for macOS
+            </div>
+            
+            <!-- System Info -->
+            <div class="system-info" id="systemInfo">
+                <div class="info-item">
+                    <span class="info-label">Electron:</span>
+                    <span class="info-value" id="electronVersion">Loading...</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Node.js:</span>
+                    <span class="info-value" id="nodeVersion">Loading...</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Platform:</span>
+                    <span class="info-value" id="platform">Loading...</span>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="btn-secondary" id="acknowledgementsBtn">Acknowledgements</button>
+                <button class="btn-primary" id="closeBtn">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Acknowledgements Modal -->
+    <div class="modal-overlay" id="acknowledgementsModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Acknowledgements</h2>
+                <button class="close-modal" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="acknowledgement-item">
+                    <h3>Electron</h3>
+                    <p>Build cross-platform desktop apps with JavaScript, HTML, and CSS</p>
+                    <a href="https://electronjs.org" target="_blank">electronjs.org</a>
+                </div>
+                <div class="acknowledgement-item">
+                    <h3>keytar</h3>
+                    <p>Node.js module to manage system keychain/keyring</p>
+                    <a href="https://github.com/atom/node-keytar" target="_blank">github.com/atom/node-keytar</a>
+                </div>
+                <div class="acknowledgement-item">
+                    <h3>TypeScript</h3>
+                    <p>Typed superset of JavaScript that compiles to plain JavaScript</p>
+                    <a href="https://www.typescriptlang.org" target="_blank">typescriptlang.org</a>
+                </div>
+                <div class="acknowledgement-item">
+                    <h3>macOS SMB</h3>
+                    <p>Built on macOS native SMB mounting capabilities</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="about.js"></script>
+</body>
+</html>

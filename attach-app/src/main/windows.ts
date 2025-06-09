@@ -7,6 +7,7 @@ import fs from 'fs';
 let mainWindow: BrowserWindow | null = null;
 let mountWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let aboutWindow: BrowserWindow | null = null;
 
 // Helper function to get the correct path for different environments
 function getResourcePath(relativePath: string): string {
@@ -54,8 +55,8 @@ export const createMainWindow = () => {
     }
 
     mainWindow = new BrowserWindow({
-        width: 400,
-        height: 450,
+        width: 460,
+        height: 580,
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
@@ -69,7 +70,7 @@ export const createMainWindow = () => {
         titleBarStyle: 'default',
         show: false, // Start hidden for smooth entrance
         skipTaskbar: false,
-        backgroundColor: '#f6f6f6', // Match content background to prevent flashing
+        backgroundColor: '#2c2c2e', // Match dark content background to prevent flashing
         title: 'Attach - Network Share Mounter',
         minimizable: true,
         maximizable: false, // Disable maximize button
@@ -146,7 +147,7 @@ export const createMountWindow = () => {
         modal: true,
         parent: mainWindow || undefined,
         show: false, // Start hidden for smooth entrance
-        backgroundColor: '#f6f6f6', // Match content background to prevent flashing
+        backgroundColor: '#2c2c2e', // Match dark content background to prevent flashing
         title: 'Mount Network Share',
         minimizable: false,
         maximizable: false,
@@ -191,7 +192,7 @@ export const createSettingsWindow = () => {
         modal: true,
         parent: mainWindow || undefined,
         show: false,
-        backgroundColor: '#f6f6f6', // Match content background to prevent flashing
+        backgroundColor: '#2c2c2e', // Match dark content background to prevent flashing
         title: 'Attach Settings',
         minimizable: false,
         maximizable: false,
@@ -209,4 +210,55 @@ export const createSettingsWindow = () => {
     settingsWindow.on('closed', () => {
         settingsWindow = null;
     });
+};
+
+export const createAboutWindow = () => {
+    if (aboutWindow) {
+        aboutWindow.show();
+        aboutWindow.focus();
+        return;
+    }
+
+    aboutWindow = new BrowserWindow({
+        width: 500,
+        height: 600,
+        webPreferences: {
+            preload: app.isPackaged 
+                ? path.join(__dirname, '../preload/index.js')
+                : path.join(process.cwd(), 'dist/preload/index.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            webSecurity: true,
+            backgroundThrottling: false,
+        },
+        resizable: false,
+        frame: true,
+        transparent: false,
+        modal: true,
+        parent: mainWindow || undefined,
+        show: false,
+        backgroundColor: '#2c2c2e', // Match dark content background to prevent flashing
+        title: 'About Attach',
+        minimizable: false,
+        maximizable: false,
+        closable: true,
+    });
+
+    aboutWindow.loadFile(getRendererPath('renderer/about/index.html'));
+
+    // Show window smoothly without custom animations
+    aboutWindow.once('ready-to-show', () => {
+        aboutWindow?.show();
+        aboutWindow?.focus();
+    });
+
+    aboutWindow.on('closed', () => {
+        aboutWindow = null;
+    });
+};
+
+export const closeAboutWindow = () => {
+    if (aboutWindow) {
+        aboutWindow.close();
+    }
 };

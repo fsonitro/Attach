@@ -62,6 +62,16 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.invoke('close-mount-window'),
     closeMainWindow: () => 
         ipcRenderer.invoke('close-main-window'),
+    openAboutWindow: () =>
+        ipcRenderer.invoke('open-about-window'),
+    closeAboutWindow: () =>
+        ipcRenderer.invoke('close-about-window'),
+    
+    // System information
+    getSystemInfo: () =>
+        ipcRenderer.invoke('get-system-info'),
+    openExternal: (url: string) =>
+        ipcRenderer.invoke('open-external', url),
         
     // Folder operations (for future use)
     openInFinder: (path: string) => 
