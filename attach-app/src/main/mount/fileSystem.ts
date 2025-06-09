@@ -1,6 +1,7 @@
 // This file provides functions to interact with the filesystem, such as reading directory contents and managing mounted shares.
 
 import { promises as fs, Stats } from 'fs';
+<<<<<<< HEAD
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
@@ -111,6 +112,13 @@ export async function readDirectoryContents(dirPath: string): Promise<string[]> 
             'directory read operation'
         );
         
+=======
+import path from 'path';
+
+export async function readDirectoryContents(dirPath: string): Promise<string[]> {
+    try {
+        const files = await fs.readdir(dirPath);
+>>>>>>> parent of d074622 (Added network resilience)
         return files;
     } catch (error) {
         if (process.env.NODE_ENV === 'development') {
@@ -122,6 +130,7 @@ export async function readDirectoryContents(dirPath: string): Promise<string[]> 
 
 export async function getFileStats(filePath: string): Promise<Stats> {
     try {
+<<<<<<< HEAD
         // Check if the parent directory is accessible first
         const parentDir = path.dirname(filePath);
         const connectivity = await checkNetworkConnectivity(parentDir);
@@ -146,6 +155,9 @@ export async function getFileStats(filePath: string): Promise<Stats> {
             'file stats operation'
         );
         
+=======
+        const stats = await fs.stat(filePath);
+>>>>>>> parent of d074622 (Added network resilience)
         return stats;
     } catch (error) {
         if (process.env.NODE_ENV === 'development') {

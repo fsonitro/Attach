@@ -427,6 +427,7 @@ function setupIpcHandlers() {
     // Open folder in Finder with enhanced timeout and user feedback
     ipcMain.handle('open-in-finder', async (event, folderPath: string) => {
         try {
+<<<<<<< HEAD
             // Import required modules
             const { safeOpenPath } = require('./mount/fileSystem');
             const { notifyNetworkOperationInProgress, notifyNetworkOperationComplete, notifyNetworkOperationFailed } = require('./utils/networkNotifications');
@@ -460,6 +461,12 @@ function setupIpcHandlers() {
                 }
                 
                 throw new Error(safetyCheck.error || 'Unable to access path');
+=======
+            await shell.openPath(folderPath);
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to open path:', error);
+>>>>>>> parent of d074622 (Added network resilience)
             }
             
             // Attempt to open the path with timeout
@@ -516,6 +523,7 @@ function setupIpcHandlers() {
             
             if (process.env.NODE_ENV === 'development') {
                 console.error('Failed to read directory:', error);
+<<<<<<< HEAD
             }
             
             // Import notifications for folder contents errors
@@ -530,6 +538,10 @@ function setupIpcHandlers() {
             }
             
             throw new Error(errorMessage);
+=======
+            }
+            throw new Error('Failed to read directory contents');
+>>>>>>> parent of d074622 (Added network resilience)
         }
     });
 
