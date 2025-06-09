@@ -1,14 +1,8 @@
 // src/main/tray.ts
-import { app, Tray, Menu, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, Tray, Menu, BrowserWindow, shell } from 'electron';
 import path from 'path';
 import { showMainWindow, createMountWindow, createSettingsWindow, quitApplication } from './windows';
 import { unmountSMBShare } from './mount/smbService';
-import { safeOpenPath } from './mount/fileSystem';
-import { 
-    notifyNetworkOperationInProgress, 
-    notifyNetworkOperationComplete, 
-    notifyNetworkOperationFailed 
-} from './utils/networkNotifications';
 
 let tray: Tray | null = null;
 let mountedShares: Map<string, any> = new Map(); // We'll update this from main process
@@ -43,114 +37,10 @@ export function updateTrayMenu(shares?: Map<string, any>) {
         mountedShares = shares;
     }
 
-    // Build mounted drives submenu
+    // Build mounted drives submenu - simplified to only show drive names and unmount option
     const mountedDrivesSubmenu: any[] = Array.from(mountedShares.values()).map(share => ({
         label: `${share.label} (${share.sharePath})`,
         submenu: [
-            {
-                label: 'Open in Finder',
-                click: async () => {
-                    try {
-                        // Immediate user feedback
-                        await notifyNetworkOperationInProgress(share.label);
-                        
-                        // Use safe path opening with aggressive timeout
-                        const safetyCheckPromise = safeOpenPath(share.mountPoint);
-                        const timeoutPromise = new Promise<{success: boolean, error?: string}>((resolve) => {
-                            setTimeout(() => {
-                                resolve({
-                                    success: false,
-                                    error: 'Network share is not responding'
-                                });
-                            }, 3000); // 3 second timeout
-                        });
-                        
-                        const safetyCheck = await Promise.race([safetyCheckPromise, timeoutPromise]);
-                        
-                        if (!safetyCheck.success) {
-                            await notifyNetworkOperationFailed(share.label, safetyCheck.error || 'Unable to access share');
-                            
-                            if (process.env.NODE_ENV === 'development') {
-                                console.error(`Cannot open ${share.label}: ${safetyCheck.error}`);
-                            }
-                            return;
-                        }
-                        
-                        // Attempt to open with timeout
-                        await Promise.race([
-                            shell.openPath(share.mountPoint),
-                            new Promise<void>((_, reject) => {
-                                setTimeout(() => reject(new Error('Open operation timed out')), 2000);
-                            })
-                        ]);
-                        
-                        await notifyNetworkOperationComplete(share.label);
-                        
-                    } catch (error) {
-                        const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
-                        const errorMessage = error instanceof Error ? error.message : 'Failed to open share';
-                        
-                        await notifyNetworkOperationFailed(share.label, errorMessage);
-                        
-                        if (process.env.NODE_ENV === 'development') {
-                            console.error(`Failed to open ${share.label} in Finder:`, error);
-                        }
-                    }
-                }
-            },
-            {
-                label: 'Browse Contents',
-                click: async () => {
-                    try {
-                        // Immediate user feedback
-                        await notifyNetworkOperationInProgress(`${share.label} contents`);
-                        
-                        // Use safe path opening with aggressive timeout
-                        const safetyCheckPromise = safeOpenPath(share.mountPoint);
-                        const timeoutPromise = new Promise<{success: boolean, error?: string}>((resolve) => {
-                            setTimeout(() => {
-                                resolve({
-                                    success: false,
-                                    error: 'Network share is not responding'
-                                });
-                            }, 3000); // 3 second timeout
-                        });
-                        
-                        const safetyCheck = await Promise.race([safetyCheckPromise, timeoutPromise]);
-                        
-                        if (!safetyCheck.success) {
-                            await notifyNetworkOperationFailed(`${share.label} contents`, safetyCheck.error || 'Unable to browse share');
-                            
-                            if (process.env.NODE_ENV === 'development') {
-                                console.error(`Cannot browse ${share.label}: ${safetyCheck.error}`);
-                            }
-                            return;
-                        }
-                        
-                        // This could show a submenu of folder contents in the future
-                        // For now, just open the folder like "Open in Finder"
-                        await Promise.race([
-                            shell.openPath(share.mountPoint),
-                            new Promise<void>((_, reject) => {
-                                setTimeout(() => reject(new Error('Browse operation timed out')), 2000);
-                            })
-                        ]);
-                        
-                        await notifyNetworkOperationComplete(`${share.label} contents`);
-                        
-                    } catch (error) {
-                        const { notifyNetworkOperationFailed } = require('./utils/networkNotifications');
-                        const errorMessage = error instanceof Error ? error.message : 'Failed to browse share';
-                        
-                        await notifyNetworkOperationFailed(`${share.label} contents`, errorMessage);
-                        
-                        if (process.env.NODE_ENV === 'development') {
-                            console.error(`Failed to browse ${share.label}:`, error);
-                        }
-                    }
-                }
-            },
-            { type: 'separator' },
             {
                 label: `Unmount ${share.label}`,
                 click: async () => {
@@ -197,19 +87,40 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             }
         },
         {
+            label: 'Open Folder',
+            enabled: mountedShares.size > 0,
+            click: async () => {
+                try {
+                    if (mountedShares.size > 0) {
+                        // Get the first mounted share
+                        const firstShare = Array.from(mountedShares.values())[0];
+                        await shell.openPath(firstShare.mountPoint);
+                        
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`Opened folder: ${firstShare.mountPoint}`);
+                        }
+                    }
+                } catch (error) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.error('Failed to open folder:', error);
+                    }
+                }
+            }
+        },
+        {
             label: 'Mounted Drives',
             submenu: mountedDrivesSubmenu
         },
         {
-            label: 'Unmount All',
+            label: 'Unmount All Drives',
             enabled: mountedShares.size > 0,
             click: async () => {
                 try {
                     if (process.env.NODE_ENV === 'development') {
-                        console.log('Unmount all triggered from tray');
+                        console.log('Unmount all drives and cleanup triggered from tray');
                     }
                     
-                    // Unmount all shares
+                    // First, unmount all tracked shares
                     for (const [label, share] of mountedShares.entries()) {
                         try {
                             await unmountSMBShare(share.mountPoint);
@@ -223,40 +134,23 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                         }
                     }
                     
-                    // Clear all mounted shares
+                    // Clear all mounted shares from tracking
                     mountedShares.clear();
+                    
+                    // Then, cleanup any orphaned mount directories
+                    const { cleanupOrphanedMountDirs } = require('./mount/smbService');
+                    const cleanedDirs = await cleanupOrphanedMountDirs();
+                    
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`Unmount all completed. Cleaned up ${cleanedDirs.length} orphaned mount directories`);
+                    }
                     
                     // Update tray menu
                     updateTrayMenu(mountedShares);
                     
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log('Unmount all completed');
-                    }
                 } catch (error) {
                     if (process.env.NODE_ENV === 'development') {
-                        console.error('Failed to unmount all:', error);
-                    }
-                }
-            }
-        },
-        {
-            label: 'Cleanup Orphaned Mounts',
-            click: async () => {
-                try {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log('Manual cleanup triggered from tray');
-                    }
-                    // Import the cleanup function and call it directly
-                    const { cleanupOrphanedMountDirs } = require('./mount/smbService');
-                    const cleanedDirs = await cleanupOrphanedMountDirs();
-                    if (cleanedDirs.length > 0 && process.env.NODE_ENV === 'development') {
-                        console.log(`Manually cleaned up ${cleanedDirs.length} orphaned mount directories`);
-                    } else if (process.env.NODE_ENV === 'development') {
-                        console.log('No orphaned mount directories found');
-                    }
-                } catch (error) {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.error('Failed to cleanup orphaned mounts:', error);
+                        console.error('Failed to unmount all drives:', error);
                     }
                 }
             }
