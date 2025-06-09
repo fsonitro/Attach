@@ -5,24 +5,38 @@
     padding: 0;
 }
 
+html {
+    height: 100%;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
     background: #f6f6f6; /* macOS window background */
     color: #1d1d1f; /* macOS text color */
-    height: 100vh;
+    height: 100%;
+    margin: 0;
+    padding: 0;
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
+    /* Performance optimizations */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent layout shifts */
+    contain: layout style paint;
 }
 
 .container {
     padding: 24px 32px 32px 32px;
-    height: 100vh;
+    height: 100%;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
     background: #f6f6f6;
+    /* Performance optimizations */
+    will-change: auto;
+    transform: translateZ(0);
 }
 
 .header {

@@ -60,15 +60,16 @@ export const createMainWindow = () => {
             preload: preloadPath,
             contextIsolation: true,
             nodeIntegration: false,
+            webSecurity: true,
+            backgroundThrottling: false,
         },
         resizable: false, // Disable resizing since no maximize button
         frame: true, // Enable native frame with controls
         transparent: false, // Disable transparency for native look
         titleBarStyle: 'default',
-        show: false, // Start hidden for smooth entrance animation
+        show: false, // Start hidden for smooth entrance
         skipTaskbar: false,
-        vibrancy: 'sidebar', // More subtle vibrancy for native windows
-        visualEffectState: 'active',
+        backgroundColor: '#f6f6f6', // Match content background to prevent flashing
         title: 'Attach - Network Share Mounter',
         minimizable: true,
         maximizable: false, // Disable maximize button
@@ -78,20 +79,10 @@ export const createMainWindow = () => {
     // Load a simple HTML page for the main window
     mainWindow.loadFile(getRendererPath('renderer/main/index.html'));
 
-    // Show window with smooth entrance animation
+    // Show window smoothly without custom animations
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
-        
-        // Add entrance animation
-        mainWindow?.setOpacity(0);
-        let opacity = 0;
-        const fadeIn = setInterval(() => {
-            opacity += 0.1;
-            mainWindow?.setOpacity(opacity);
-            if (opacity >= 1) {
-                clearInterval(fadeIn);
-            }
-        }, 20);
+        mainWindow?.focus();
     });
 
     // Handle window closed - hide instead of quit on normal close, but allow force quit
@@ -132,6 +123,7 @@ export const quitApplication = () => {
 
 export const createMountWindow = () => {
     if (mountWindow) {
+        mountWindow.show();
         mountWindow.focus();
         return;
     }
@@ -145,15 +137,16 @@ export const createMountWindow = () => {
                 : path.join(process.cwd(), 'dist/preload/index.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            webSecurity: true,
+            backgroundThrottling: false,
         },
         resizable: false,
         frame: true, // Enable native frame
         transparent: false,
         modal: true,
         parent: mainWindow || undefined,
-        show: false, // Start hidden for animation
-        vibrancy: 'sidebar',
-        visualEffectState: 'active',
+        show: false, // Start hidden for smooth entrance
+        backgroundColor: '#f6f6f6', // Match content background to prevent flashing
         title: 'Mount Network Share',
         minimizable: false,
         maximizable: false,
@@ -162,23 +155,10 @@ export const createMountWindow = () => {
 
     mountWindow.loadFile(getRendererPath('renderer/mount/index.html'));
 
-    // Show with animation
+    // Show window smoothly without custom animations
     mountWindow.once('ready-to-show', () => {
         mountWindow?.show();
-        
-        // Scale entrance animation
-        mountWindow?.setOpacity(0);
-        let scale = 0.8;
-        let opacity = 0;
-        const animate = setInterval(() => {
-            scale += 0.02;
-            opacity += 0.1;
-            mountWindow?.setOpacity(opacity);
-            // Note: setSize for scale effect would need bounds calculation
-            if (opacity >= 1 && scale >= 1) {
-                clearInterval(animate);
-            }
-        }, 16); // ~60fps
+        mountWindow?.focus();
     });
 
     mountWindow.on('closed', () => {
@@ -188,6 +168,7 @@ export const createMountWindow = () => {
 
 export const createSettingsWindow = () => {
     if (settingsWindow) {
+        settingsWindow.show();
         settingsWindow.focus();
         return;
     }
@@ -201,6 +182,8 @@ export const createSettingsWindow = () => {
                 : path.join(process.cwd(), 'dist/preload/index.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            webSecurity: true,
+            backgroundThrottling: false,
         },
         resizable: false,
         frame: true,
@@ -208,8 +191,7 @@ export const createSettingsWindow = () => {
         modal: true,
         parent: mainWindow || undefined,
         show: false,
-        vibrancy: 'sidebar',
-        visualEffectState: 'active',
+        backgroundColor: '#f6f6f6', // Match content background to prevent flashing
         title: 'Attach Settings',
         minimizable: false,
         maximizable: false,
@@ -218,20 +200,10 @@ export const createSettingsWindow = () => {
 
     settingsWindow.loadFile(getRendererPath('renderer/settings/index.html'));
 
-    // Show with animation
+    // Show window smoothly without custom animations
     settingsWindow.once('ready-to-show', () => {
         settingsWindow?.show();
-        
-        // Fade entrance animation
-        settingsWindow?.setOpacity(0);
-        let opacity = 0;
-        const fadeIn = setInterval(() => {
-            opacity += 0.1;
-            settingsWindow?.setOpacity(opacity);
-            if (opacity >= 1) {
-                clearInterval(fadeIn);
-            }
-        }, 20);
+        settingsWindow?.focus();
     });
 
     settingsWindow.on('closed', () => {

@@ -5,21 +5,35 @@
     padding: 0;
 }
 
+html {
+    height: 100%;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
     background: #f6f6f6; /* macOS window background */
     color: #1d1d1f; /* macOS text color */
-    height: 100vh;
+    height: 100%;
+    margin: 0;
+    padding: 0;
     overflow: hidden;
     -webkit-user-select: none;
     user-select: none;
+    /* Performance optimizations */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent layout shifts */
+    contain: layout style paint;
 }
 
 .settings-window {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     background: #f6f6f6;
+    /* Performance optimizations */
+    will-change: auto;
+    transform: translateZ(0);
 }
 
 /* Header */
@@ -49,7 +63,10 @@ body {
     flex: 1;
     padding: 24px 32px;
     overflow-y: auto;
-    max-height: calc(100vh - 200px);
+    max-height: calc(100% - 200px);
+    /* Performance optimizations */
+    will-change: scroll-position;
+    -webkit-overflow-scrolling: touch;
 }
 
 .settings-section {

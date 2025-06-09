@@ -1,5 +1,14 @@
 // Settings window JavaScript
 document.addEventListener('DOMContentLoaded', async () => {
+    // Wait for CSS to be fully applied to prevent layout shifts
+    await new Promise(resolve => {
+        if (document.readyState === 'complete') {
+            resolve();
+        } else {
+            window.addEventListener('load', resolve);
+        }
+    });
+
     // Get all form elements
     const elements = {
         startAtLogin: document.getElementById('startAtLogin'),

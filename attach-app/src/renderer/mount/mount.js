@@ -1,6 +1,16 @@
 // This file contains the JavaScript logic for the mount popup, handling user input and communicating with the main process.
 
+// Defer execution until DOM and styles are fully loaded
 document.addEventListener('DOMContentLoaded', async () => {
+    // Wait for CSS to be fully applied to prevent layout shifts
+    await new Promise(resolve => {
+        if (document.readyState === 'complete') {
+            resolve();
+        } else {
+            window.addEventListener('load', resolve);
+        }
+    });
+
     const mountForm = document.getElementById('mountForm');
     const savedConnectionsSelect = document.getElementById('savedConnections');
     const usernameInput = document.getElementById('username');
