@@ -65,6 +65,7 @@ declare global {
             getRecentConnections: (limit?: number) => Promise<SavedConnection[]>;
             getConnectionCredentials: (connectionId: string) => Promise<{username: string, password: string} | null>;
             removeSavedConnection: (connectionId: string) => Promise<{success: boolean, message: string}>;
+            updateConnection: (connectionId: string, connectionData: any) => Promise<{success: boolean, message: string}>;
             updateConnectionAutoMount: (connectionId: string, autoMount: boolean) => Promise<{success: boolean, message: string}>;
             mountSavedConnection: (connectionId: string) => Promise<MountResult>;
             

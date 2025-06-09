@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.invoke('get-connection-credentials', connectionId),
     removeSavedConnection: (connectionId: string) =>
         ipcRenderer.invoke('remove-saved-connection', connectionId),
+    updateConnection: (connectionId: string, connectionData: any) =>
+        ipcRenderer.invoke('update-connection', connectionId, connectionData),
     updateConnectionAutoMount: (connectionId: string, autoMount: boolean) =>
         ipcRenderer.invoke('update-connection-auto-mount', connectionId, autoMount),
     mountSavedConnection: (connectionId: string) =>

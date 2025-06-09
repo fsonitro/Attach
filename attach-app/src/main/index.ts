@@ -651,6 +651,49 @@ function setupIpcHandlers() {
         }
     });
 
+    ipcMain.handle('update-connection', async (event, connectionId: string, connectionData: any): Promise<{success: boolean, message: string}> => {
+        try {
+            const connection = await connectionStore.getConnection(connectionId);
+            if (!connection) {
+                return {
+                    success: false,
+                    message: 'Connection not found'
+                };
+            }
+
+            // Get the current password
+            const currentPassword = await connectionStore.getPassword(connectionId);
+            if (!currentPassword) {
+                return {
+                    success: false,
+                    message: 'Connection password not found'
+                };
+            }
+
+            // Update the connection with new data
+            await connectionStore.saveConnection(
+                connectionData.sharePath || connection.sharePath,
+                connectionData.username || connection.username,
+                currentPassword, // Keep the existing password
+                connectionData.label || connection.label,
+                connectionData.autoMount !== undefined ? connectionData.autoMount : connection.autoMount
+            );
+
+            return {
+                success: true,
+                message: 'Connection updated successfully'
+            };
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to update connection:', error);
+            }
+            return {
+                success: false,
+                message: 'Failed to update connection'
+            };
+        }
+    });
+
     ipcMain.handle('mount-saved-connection', async (event, connectionId: string): Promise<MountResult> => {
         try {
             if (!autoMountService) {
