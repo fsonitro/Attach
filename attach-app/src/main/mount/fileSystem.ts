@@ -4,10 +4,6 @@ import { promises as fs, Stats } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
-import { 
-    notifyNetworkTimeout, 
-    notifyShareInaccessible 
-} from '../utils/networkNotifications';
 
 const execPromise = promisify(exec);
 
@@ -16,9 +12,8 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number = 5000, o
     return Promise.race([
         operation,
         new Promise<never>((_, reject) => 
-            setTimeout(async () => {
-                // Notify user about timeout before rejecting
-                await notifyNetworkTimeout(operationName);
+            setTimeout(() => {
+                // Simplified: Just reject without notification to prevent hanging
                 reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
             }, timeoutMs)
         )
@@ -72,10 +67,13 @@ export async function checkNetworkConnectivity(mountPath: string): Promise<{ acc
         return { accessible, isNetwork: true };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes('timeout')) {
-            await notifyNetworkTimeout('Network mount connectivity check');
-        } else {
-            await notifyShareInaccessible(path.basename(mountPath));
+        // Simplified: Just log errors without notifications
+        if (process.env.NODE_ENV === 'development') {
+            if (errorMessage.includes('timeout')) {
+                console.log('Network mount connectivity check timeout');
+            } else {
+                console.log(`Share inaccessible: ${path.basename(mountPath)}`);
+            }
         }
         return { 
             accessible: false, 
@@ -95,9 +93,9 @@ export async function readDirectoryContents(dirPath: string): Promise<string[]> 
                 ? `Network share is not accessible: ${connectivity.error || 'Connection lost'}`
                 : `Directory is not accessible: ${dirPath}`;
             
-            // Notify user if it's a network mount issue
-            if (connectivity.isNetwork) {
-                await notifyShareInaccessible(path.basename(dirPath));
+            // Simplified: Just log if it's a network mount issue
+            if (connectivity.isNetwork && process.env.NODE_ENV === 'development') {
+                console.log(`Share inaccessible: ${path.basename(dirPath)}`);
             }
             
             throw new Error(errorMsg);
@@ -130,9 +128,9 @@ export async function getFileStats(filePath: string): Promise<Stats> {
                 ? `Network share is not accessible for file stats: ${connectivity.error || 'Connection lost'}`
                 : `Parent directory is not accessible: ${parentDir}`;
             
-            // Notify user if it's a network mount issue
-            if (connectivity.isNetwork) {
-                await notifyShareInaccessible(path.basename(parentDir));
+            // Simplified: Just log if it's a network mount issue
+            if (connectivity.isNetwork && process.env.NODE_ENV === 'development') {
+                console.log(`Share inaccessible: ${path.basename(parentDir)}`);
             }
             
             throw new Error(errorMsg);
@@ -165,9 +163,9 @@ export async function safeOpenPath(folderPath: string): Promise<{ success: boole
                 ? `Cannot open network share: ${connectivity.error || 'Network connection lost'}`
                 : `Cannot access path: ${folderPath}`;
             
-            // Notify user if it's a network mount issue
-            if (connectivity.isNetwork) {
-                await notifyShareInaccessible(path.basename(folderPath));
+            // Simplified: Just log if it's a network mount issue
+            if (connectivity.isNetwork && process.env.NODE_ENV === 'development') {
+                console.log(`Share inaccessible: ${path.basename(folderPath)}`);
             }
             
             return { success: false, error: errorMsg };
@@ -196,21 +194,27 @@ export async function safeOpenPath(folderPath: string): Promise<{ success: boole
             console.error(`Failed to safely open path ${folderPath}:`, error);
         }
         
-        // Provide user-friendly error messages
+        // Simplified: Provide user-friendly error messages without notifications
         if (errorMessage.includes('timeout')) {
-            notifyNetworkTimeout(folderPath);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Network timeout: ${folderPath}`);
+            }
             return { 
                 success: false, 
                 error: 'Network share is not responding. The connection may have been lost.' 
             };
         } else if (errorMessage.includes('No such file')) {
-            await notifyShareInaccessible(path.basename(folderPath));
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Share not found: ${path.basename(folderPath)}`);
+            }
             return { 
                 success: false, 
                 error: 'The network share location no longer exists.' 
             };
         } else {
-            await notifyShareInaccessible(path.basename(folderPath));
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Share inaccessible: ${path.basename(folderPath)}`);
+            }
             return { 
                 success: false, 
                 error: 'Unable to access the network share. Please check your connection.' 

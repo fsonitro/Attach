@@ -78,4 +78,18 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.invoke('open-in-finder', path),
     getFolderContents: (path: string) => 
         ipcRenderer.invoke('get-folder-contents', path),
+
+    // Network and share monitoring
+    getMonitoringStatus: () =>
+        ipcRenderer.invoke('get-monitoring-status'),
+    forceShareHealthCheck: (label?: string) =>
+        ipcRenderer.invoke('force-share-health-check', label),
+    forceShareReconnection: (label: string) =>
+        ipcRenderer.invoke('force-share-reconnection', label),
+    quickConnectivityCheck: (serverName: string) =>
+        ipcRenderer.invoke('quick-connectivity-check', serverName),
+    getShareMonitoringStats: () =>
+        ipcRenderer.invoke('get-share-monitoring-stats'),
+    toggleShareMonitoring: (enable: boolean) =>
+        ipcRenderer.invoke('toggle-share-monitoring', enable),
 });

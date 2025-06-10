@@ -3,9 +3,17 @@ import { app, Tray, Menu, BrowserWindow, shell } from 'electron';
 import path from 'path';
 import { showMainWindow, createMountWindow, createSettingsWindow, createAboutWindow, quitApplication } from './windows';
 import { unmountSMBShare } from './mount/smbService';
+import { NetworkStatus } from './utils/networkWatcher';
+import { AutoMountService } from './utils/autoMountService';
 
 let tray: Tray | null = null;
 let mountedShares: Map<string, any> = new Map(); // We'll update this from main process
+let currentNetworkStatus: NetworkStatus | null = null;
+let autoMountServiceRef: AutoMountService | null = null;
+
+export function setAutoMountServiceReference(service: AutoMountService | null) {
+    autoMountServiceRef = service;
+}
 
 export function createTray(mainWindow: BrowserWindow) {
     // Use folders icon for tray (22x22 optimized size with template for theme adaptation)
@@ -28,6 +36,59 @@ export function createTray(mainWindow: BrowserWindow) {
     // This prevents accidental window opening when clicking the tray icon
 
     return tray;
+}
+
+/**
+ * Update network status in tray
+ */
+export function updateTrayNetworkStatus(networkStatus: NetworkStatus) {
+    currentNetworkStatus = networkStatus;
+    updateTrayTooltip();
+    updateTrayMenu(); // Refresh menu to show network status
+}
+
+/**
+ * Update tray tooltip with network status
+ */
+function updateTrayTooltip() {
+    if (!tray || !currentNetworkStatus) return;
+    
+    let tooltip = 'Attach - Network Share Mounter';
+    
+    if (!currentNetworkStatus.isOnline) {
+        tooltip += '\n🔴 Network: Disconnected';
+    } else if (!currentNetworkStatus.hasInternet) {
+        tooltip += '\n🟡 Network: Connected (No Internet)';
+    } else {
+        tooltip += '\n🟢 Network: Connected';
+        if (currentNetworkStatus.networkId) {
+            tooltip += ` (${currentNetworkStatus.networkId})`;
+        }
+    }
+    
+    if (mountedShares.size > 0) {
+        tooltip += `\n📁 ${mountedShares.size} share${mountedShares.size > 1 ? 's' : ''} mounted`;
+    }
+    
+    tray.setToolTip(tooltip);
+}
+
+/**
+ * Get network status label for tray menu
+ */
+function getNetworkStatusLabel(): string {
+    if (!currentNetworkStatus) {
+        return '🔍 Network: Checking...';
+    }
+    
+    if (!currentNetworkStatus.isOnline) {
+        return '🔴 Network: Disconnected';
+    } else if (!currentNetworkStatus.hasInternet) {
+        return '🟡 Network: Limited (No Internet)';
+    } else {
+        const networkName = currentNetworkStatus.networkId || 'Connected';
+        return `🟢 Network: ${networkName}`;
+    }
 }
 
 export function updateTrayMenu(shares?: Map<string, any>) {
@@ -91,18 +152,76 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             enabled: mountedShares.size > 0,
             click: async () => {
                 try {
-                    if (mountedShares.size > 0) {
-                        // Get the first mounted share
-                        const firstShare = Array.from(mountedShares.values())[0];
-                        await shell.openPath(firstShare.mountPoint);
-                        
-                        if (process.env.NODE_ENV === 'development') {
-                            console.log(`Opened folder: ${firstShare.mountPoint}`);
-                        }
+                    if (mountedShares.size === 0) {
+                        return;
                     }
+
+                    // Check network connectivity first
+                    if (currentNetworkStatus && !currentNetworkStatus.isOnline) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log('Cannot open folder: Network is disconnected');
+                        }
+                        
+                        // Import essential notifications for user feedback
+                        const { notifyNetworkDisconnected } = require('./utils/essentialNotifications');
+                        await notifyNetworkDisconnected();
+                        return;
+                    }
+
+                    // Get the first mounted share
+                    const firstShare = Array.from(mountedShares.values())[0];
+                    
+                    // Use safe path opening with timeout protection
+                    const { safeOpenPath } = require('./mount/fileSystem');
+                    
+                    // Perform safety check with timeout
+                    const safetyCheck = await Promise.race([
+                        safeOpenPath(firstShare.mountPoint),
+                        new Promise<{success: boolean, error: string}>((resolve) => {
+                            setTimeout(() => {
+                                resolve({
+                                    success: false,
+                                    error: 'Network share is taking too long to respond. The connection may be slow or unavailable.'
+                                });
+                            }, 3000); // 3 second timeout to prevent hanging
+                        })
+                    ]);
+                    
+                    if (!safetyCheck.success) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`Failed to access path: ${safetyCheck.error}`);
+                        }
+                        
+                        // Show user-friendly notification
+                        const { notifySharesDisconnected } = require('./utils/essentialNotifications');
+                        await notifySharesDisconnected(1);
+                        return;
+                    }
+                    
+                    // Attempt to open the path with timeout
+                    await Promise.race([
+                        shell.openPath(firstShare.mountPoint),
+                        new Promise<void>((_, reject) => {
+                            setTimeout(() => {
+                                reject(new Error('Opening folder timed out'));
+                            }, 2000); // 2 second timeout for shell.openPath
+                        })
+                    ]);
+                    
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`Opened folder: ${firstShare.mountPoint}`);
+                    }
+                    
                 } catch (error) {
                     if (process.env.NODE_ENV === 'development') {
                         console.error('Failed to open folder:', error);
+                    }
+                    
+                    // Show user-friendly error notification
+                    const errorMessage = error instanceof Error ? error.message : 'Failed to open folder';
+                    if (errorMessage.includes('timeout') || errorMessage.includes('taking too long')) {
+                        const { notifySharesDisconnected } = require('./utils/essentialNotifications');
+                        await notifySharesDisconnected(1);
                     }
                 }
             }
@@ -155,7 +274,48 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 }
             }
         },
+        {
+            label: getNetworkStatusLabel(),
+            enabled: false
+        },
         { type: 'separator' },
+        {
+            label: 'Cleanup Stale Mounts',
+            click: async () => {
+                try {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🧹 Manual stale mount cleanup triggered from tray...');
+                    }
+                    
+                    if (autoMountServiceRef) {
+                        const result = await autoMountServiceRef.cleanupAllStaleMounts();
+                        
+                        if (process.env.NODE_ENV === 'development') {
+                            if (result.totalCleaned > 0) {
+                                console.log(`✅ Tray cleanup: removed ${result.totalCleaned} stale mounts`);
+                                result.cleanedMounts.forEach((mount: any) => {
+                                    console.log(`   - ${mount.serverPath} (${mount.mountPoint})`);
+                                });
+                            } else {
+                                console.log('🧹 Tray cleanup: no stale mounts found');
+                            }
+                            
+                            if (result.errors.length > 0) {
+                                console.warn(`⚠️ Tray cleanup had ${result.errors.length} errors:`, result.errors);
+                            }
+                        }
+                    } else {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.warn('⚠️ Auto-mount service not available for cleanup');
+                        }
+                    }
+                } catch (error) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.error('❌ Tray stale mount cleanup failed:', error);
+                    }
+                }
+            }
+        },
         {
             label: 'Settings',
             click: () => {

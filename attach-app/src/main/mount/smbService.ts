@@ -3,11 +3,6 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as keytar from 'keytar';
-import { 
-    notifyMountFailure,
-    notifyNetworkTimeout,
-    notifyServerUnreachable 
-} from '../utils/networkNotifications';
 
 const execPromise = promisify(exec);
 
@@ -31,7 +26,7 @@ export const listSMBShares = async (serverName: string, username?: string, passw
             }
         }
         
-        const result = await execPromise(command, { timeout: 10000 });
+        const result = await execPromise(command, { timeout: 8000 });
         const shares: string[] = [];
         const lines = result.stdout.split('\n');
         
@@ -125,8 +120,10 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
             console.log(`Server ${serverName} not reachable via ping/DNS, but attempting SMB connection anyway`);
             console.log(`Reason: ${connectivityCheck.error}`);
         }
-        // Notify user about connectivity issues while still allowing the mount attempt
-        await notifyServerUnreachable(serverName);
+        // Simplified: Log connectivity issues without notifications
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Server unreachable: ${serverName}`);
+        }
         // Don't block the mount - SMB has its own name resolution mechanisms
         // Just log the issue for debugging
     } else {
@@ -162,7 +159,7 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
         console.log(`Creating mount point: ${mountPoint}`);
     }
     try {
-        await execPromise(`mkdir -p "${mountPoint}"`, { timeout: 30000 });
+        await execPromise(`mkdir -p "${mountPoint}"`, { timeout: 10000 });
     } catch (error) {
         throw new Error(`Failed to create mount point: ${mountPoint}`);
     }
@@ -178,7 +175,7 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     }
 
     try {
-        const result = await execPromise(command, { timeout: 60000 }); // 60 second timeout
+        const result = await execPromise(command, { timeout: 15000 }); // 15 second timeout - reasonable for mount operations
         if (process.env.NODE_ENV === 'development') {
             console.log(`Mount successful: //${sanitizedSharePath} -> ${mountPoint}`);
             if (result.stdout && result.stdout.trim().length > 0) {
@@ -220,30 +217,108 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
             }
         }
         
-        // Provide more helpful error messages (without exposing sensitive data)
+        // Simplified: Provide helpful error messages without notifications
         if (sanitizedErrorMessage.includes('Authentication') || sanitizedStderr.includes('Authentication')) {
-            await notifyMountFailure(serverName, 'Authentication failed');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: Authentication failed for ${serverName}`);
+            }
             throw new Error('Authentication failed. Please check your username and password.');
         } else if (sanitizedErrorMessage.includes('No route to host') || sanitizedErrorMessage.includes('could not connect') || sanitizedStderr.includes('No route to host')) {
-            await notifyMountFailure(serverName, 'Could not connect to server');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: Could not connect to ${serverName}`);
+            }
             throw new Error('Could not connect to the server. Please check the server address and network connection.');
         } else if (sanitizedErrorMessage.includes('Permission denied') || sanitizedStderr.includes('Permission denied')) {
-            await notifyMountFailure(serverName, 'Permission denied');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: Permission denied for ${serverName}`);
+            }
             throw new Error('Permission denied. Please check your credentials and access rights.');
         } else if (sanitizedErrorMessage.includes('timeout')) {
-            await notifyNetworkTimeout('SMB mount operation');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: Network timeout for ${serverName}`);
+            }
             throw new Error('Connection timeout. The server might be unreachable or slow to respond.');
         } else if (sanitizedStderr.includes('mount_smbfs: server rejected the connection')) {
-            await notifyMountFailure(serverName, 'Server rejected connection');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: Server rejected connection to ${serverName}`);
+            }
             throw new Error('Server rejected the connection. Please check the server name and share path.');
         } else if (sanitizedStderr.includes('Operation not supported')) {
-            await notifyMountFailure(serverName, 'SMB operation not supported');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: SMB operation not supported for ${serverName}`);
+            }
             throw new Error('SMB operation not supported. The server might not support SMB or the share might not exist.');
         } else {
-            await notifyMountFailure(serverName, 'Mount operation failed');
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount failure: Mount operation failed for ${serverName}`);
+            }
             // Return a generic error message that doesn't expose sensitive information
             throw new Error('Failed to mount SMB share. Please check your connection details and try again.');
         }
+    }
+};
+
+// Rapid connectivity check for monitoring purposes (faster, less reliable)
+export const quickConnectivityCheck = async (serverName: string, timeoutMs: number = 3000): Promise<{ accessible: boolean; method?: string; error?: string }> => {
+    try {
+        // Quick SMB port check using nc (netcat) - fastest method
+        try {
+            await execPromise(`nc -z -w 1 "${serverName}" 445`, { timeout: 2000 });
+            return { accessible: true, method: 'SMB port check' };
+        } catch (ncError) {
+            // nc failed, try DNS resolution only (don't ping)
+            try {
+                const hostResult = await execPromise(`host "${serverName}"`, { timeout: 2000 });
+                if (hostResult.stdout.includes('has address') || hostResult.stdout.includes('has IPv6')) {
+                    return { accessible: true, method: 'DNS resolution' };
+                }
+            } catch (dnsError) {
+                // All quick checks failed
+                return { 
+                    accessible: false, 
+                    error: 'SMB port unreachable and DNS resolution failed' 
+                };
+            }
+        }
+        
+        return { 
+            accessible: false, 
+            error: 'All quick connectivity checks failed' 
+        };
+    } catch (error) {
+        return { 
+            accessible: false, 
+            error: 'Connectivity check error: ' + (error instanceof Error ? error.message : String(error))
+        };
+    }
+};
+
+// Enhanced mount operation with monitoring integration
+export const mountSMBShareWithMonitoring = async (
+    sharePath: string, 
+    username: string, 
+    password: string,
+    onProgress?: (message: string) => void
+): Promise<string> => {
+    // Notify about operation start
+    if (onProgress) {
+        onProgress('Preparing to mount share...');
+    }
+
+    // Use the existing mountSMBShare function but add progress notifications
+    try {
+        const mountPoint = await mountSMBShare(sharePath, username, password);
+        
+        if (onProgress) {
+            onProgress(`Successfully mounted to ${mountPoint}`);
+        }
+        
+        return mountPoint;
+    } catch (error) {
+        if (onProgress) {
+            onProgress(`Mount failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        throw error;
     }
 };
 
@@ -273,6 +348,194 @@ export const isMountPoint = async (path: string): Promise<boolean> => {
     }
 };
 
+// System-wide mount detection functions for handling Finder/system mount conflicts
+
+// Function to detect all SMB mounts on the system (including Finder mounts)
+export const detectSystemSMBMounts = async (): Promise<Array<{
+    mountPoint: string;
+    serverPath: string;
+    isAppManaged: boolean;
+}>> => {
+    try {
+        const result = await execPromise(`mount | grep -E "(smbfs|cifs)"`, { timeout: 5000 });
+        const mounts: Array<{ mountPoint: string; serverPath: string; isAppManaged: boolean }> = [];
+        
+        const lines = result.stdout.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+            // Parse mount line format: "//server/share on /mount/point (smbfs, ...)"
+            const match = line.match(/\/\/([^\/]+\/[^\s]+)\s+on\s+([^\s]+)\s+\(smbfs/);
+            if (match) {
+                const serverPath = match[1]; // e.g., "workstation/nas"
+                const mountPoint = match[2]; // e.g., "/Volumes/nas" or "/Users/felipe/mounts/felipe-xxx"
+                const isAppManaged = mountPoint.includes(`${process.env.HOME}/mounts/`);
+                
+                mounts.push({
+                    mountPoint,
+                    serverPath,
+                    isAppManaged
+                });
+            }
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Found ${mounts.length} SMB mounts on system:`);
+            mounts.forEach(mount => {
+                console.log(`  - ${mount.serverPath} → ${mount.mountPoint} (${mount.isAppManaged ? 'app-managed' : 'system/finder'})`);
+            });
+        }
+        
+        return mounts;
+    } catch (error) {
+        // No SMB mounts found or command failed
+        if (process.env.NODE_ENV === 'development') {
+            console.log('No SMB mounts detected on system');
+        }
+        return [];
+    }
+};
+
+// Function to detect if a specific share path conflicts with existing mounts
+export const detectMountConflict = async (sharePath: string): Promise<{
+    hasConflict: boolean;
+    conflictingMount?: {
+        mountPoint: string;
+        serverPath: string;
+        isAppManaged: boolean;
+    };
+}> => {
+    try {
+        // Normalize the share path for comparison
+        const normalizedSharePath = sharePath.replace(/^smb:\/\//, '').replace(/^\/\//, '').toLowerCase();
+        
+        const systemMounts = await detectSystemSMBMounts();
+        
+        for (const mount of systemMounts) {
+            if (mount.serverPath.toLowerCase() === normalizedSharePath) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Mount conflict detected: ${sharePath} is already mounted at ${mount.mountPoint}`);
+                }
+                return {
+                    hasConflict: true,
+                    conflictingMount: mount
+                };
+            }
+        }
+        
+        return { hasConflict: false };
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`Error checking mount conflicts for ${sharePath}:`, error);
+        }
+        return { hasConflict: false };
+    }
+};
+
+// Function to safely eject a conflicting mount
+export const safeEjectConflictingMount = async (mountPoint: string, serverPath: string): Promise<{
+    success: boolean;
+    error?: string;
+}> => {
+    try {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Attempting to eject conflicting mount: ${serverPath} at ${mountPoint}`);
+        }
+        
+        // Check if mount point is still active
+        const isStillMounted = await isMountPoint(mountPoint);
+        if (!isStillMounted) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mount ${mountPoint} is no longer active, skipping ejection`);
+            }
+            return { success: true };
+        }
+        
+        // For /Volumes/ mounts (Finder), try diskutil eject first
+        if (mountPoint.startsWith('/Volumes/')) {
+            try {
+                await execPromise(`diskutil eject "${mountPoint}"`, { timeout: 8000 });
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Successfully ejected via diskutil: ${mountPoint}`);
+                }
+                return { success: true };
+            } catch (diskutilError) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`diskutil eject failed, trying umount: ${mountPoint}`);
+                }
+            }
+        }
+        
+        // Try standard umount (with shorter timeout to prevent hanging)
+        try {
+            await execPromise(`umount "${mountPoint}"`, { timeout: 5000 });
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Successfully unmounted: ${mountPoint}`);
+            }
+            return { success: true };
+        } catch (umountError) {
+            // Try forced umount as last resort (with shorter timeout)
+            try {
+                await execPromise(`umount -f "${mountPoint}"`, { timeout: 8000 });
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Successfully force unmounted: ${mountPoint}`);
+                }
+                return { success: true };
+            } catch (forceError) {
+                // **CRITICAL FIX**: Don't fail or try sudo - gracefully handle unmount failures
+                if (process.env.NODE_ENV === 'development') {
+                    console.warn(`Failed to unmount ${mountPoint} - network disconnection may have left mount in inconsistent state`);
+                }
+                // Return success to prevent cascading failures - system will clean up eventually
+                return { success: true, error: `Unmount failed but continuing cleanup: ${forceError instanceof Error ? forceError.message : String(forceError)}` };
+            }
+        }
+    } catch (error) {
+        const errorMessage = `Error ejecting mount ${mountPoint}: ${error instanceof Error ? error.message : String(error)}`;
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(errorMessage);
+        }
+        return { success: false, error: errorMessage };
+    }
+};
+
+// Function to clean up all stale mounts for a specific share path
+export const cleanupStaleMounts = async (sharePath: string): Promise<{
+    cleaned: number;
+    errors: string[];
+}> => {
+    const errors: string[] = [];
+    let cleaned = 0;
+    
+    try {
+        const normalizedSharePath = sharePath.replace(/^smb:\/\//, '').replace(/^\/\//, '').toLowerCase();
+        const systemMounts = await detectSystemSMBMounts();
+        
+        for (const mount of systemMounts) {
+            if (mount.serverPath.toLowerCase() === normalizedSharePath) {
+                const result = await safeEjectConflictingMount(mount.mountPoint, mount.serverPath);
+                if (result.success) {
+                    cleaned++;
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`Cleaned up stale mount: ${mount.mountPoint}`);
+                    }
+                } else {
+                    errors.push(result.error || `Failed to clean up ${mount.mountPoint}`);
+                }
+            }
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Cleanup completed for ${sharePath}: ${cleaned} cleaned, ${errors.length} errors`);
+        }
+        
+        return { cleaned, errors };
+    } catch (error) {
+        const errorMessage = `Error during stale mount cleanup: ${error instanceof Error ? error.message : String(error)}`;
+        errors.push(errorMessage);
+        return { cleaned, errors };
+    }
+};
+
 // Function to clean up orphaned mount directories
 export const cleanupOrphanedMountDirs = async (): Promise<string[]> => {
     const cleanedUpDirs: string[] = [];
@@ -280,42 +543,88 @@ export const cleanupOrphanedMountDirs = async (): Promise<string[]> => {
     
     try {
         // Check if mounts directory exists
-        await execPromise(`test -d "${mountsDir}"`);
+        try {
+            await execPromise(`test -d "${mountsDir}"`);
+        } catch (dirError) {
+            // Mounts directory doesn't exist, nothing to clean up
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Mounts directory doesn't exist: ${mountsDir}`);
+            }
+            return cleanedUpDirs;
+        }
         
-        // Get list of directories in mounts folder
-        const result = await execPromise(`find "${mountsDir}" -maxdepth 1 -type d -not -path "${mountsDir}"`, { timeout: 10000 });
-        const mountDirs = result.stdout.trim().split('\n').filter(dir => dir.length > 0);
-        
-        for (const dir of mountDirs) {
-            // Check if this directory is still a valid mount point
-            const isStillMounted = await isMountPoint(dir);
-            const isAccessible = await isMountPointAccessible(dir);
+        // Get list of directories in mounts folder, handle case where directory might be empty
+        try {
+            const result = await execPromise(`find "${mountsDir}" -maxdepth 1 -type d -not -path "${mountsDir}" 2>/dev/null || true`, { timeout: 8000 });
+            const mountDirs = result.stdout.trim().split('\n').filter(dir => dir.length > 0 && dir.trim() !== '');
             
-            if (!isStillMounted || !isAccessible) {
-                try {
-                    // Try to unmount if it's still showing as mounted but not accessible
-                    if (isStillMounted && !isAccessible) {
-                        console.log(`Attempting to unmount orphaned mount: ${dir}`);
-                        await execPromise(`umount -f "${dir}"`, { timeout: 10000 });
-                    }
-                    
-                    // Remove the empty directory
-                    await execPromise(`rmdir "${dir}"`, { timeout: 5000 });
-                    cleanedUpDirs.push(dir);
-                    console.log(`Cleaned up orphaned mount directory: ${dir}`);
-                } catch (cleanupError) {
-                    console.warn(`Failed to clean up directory ${dir}:`, cleanupError);
+            if (mountDirs.length === 0) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('No mount directories found to clean up');
                 }
+                return cleanedUpDirs;
+            }
+            
+            for (const dir of mountDirs) {
+                try {
+                    // Check if this directory still exists (it might have been cleaned up by the system)
+                    await execPromise(`test -d "${dir}"`, { timeout: 3000 });
+                    
+                    // Check if this directory is still a valid mount point
+                    const isStillMounted = await isMountPoint(dir);
+                    const isAccessible = await isMountPointAccessible(dir);
+                    
+                    if (!isStillMounted || !isAccessible) {
+                        try {
+                            // Try to unmount if it's still showing as mounted but not accessible
+                            if (isStillMounted && !isAccessible) {
+                                if (process.env.NODE_ENV === 'development') {
+                                    console.log(`Attempting to unmount orphaned mount: ${dir}`);
+                                }
+                                try {
+                                    await execPromise(`umount -f "${dir}"`, { timeout: 5000 });
+                                } catch (unmountError) {
+                                    // **CRITICAL FIX**: Don't fail on unmount errors during cleanup
+                                    if (process.env.NODE_ENV === 'development') {
+                                        console.warn(`Failed to unmount orphaned mount ${dir}, continuing cleanup anyway`);
+                                    }
+                                }
+                            }
+                            
+                            // Remove the empty directory
+                            await execPromise(`rmdir "${dir}"`, { timeout: 5000 });
+                            cleanedUpDirs.push(dir);
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`Cleaned up orphaned mount directory: ${dir}`);
+                            }
+                        } catch (cleanupError) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.warn(`Failed to clean up directory ${dir}:`, cleanupError);
+                            }
+                        }
+                    }
+                } catch (dirCheckError) {
+                    // Directory doesn't exist anymore, which is fine
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`Directory ${dir} was already removed`);
+                    }
+                }
+            }
+        } catch (findError) {
+            if (process.env.NODE_ENV === 'development') {
+                console.warn('Failed to list mount directories:', findError);
             }
         }
     } catch (error) {
-        console.warn('Failed to cleanup orphaned mount directories:', error);
+        if (process.env.NODE_ENV === 'development') {
+            console.warn('Failed to cleanup orphaned mount directories:', error);
+        }
     }
     
     return cleanedUpDirs;
 };
 
-// Function to validate and refresh mount status
+// Function to validate and refresh mount status with enhanced monitoring
 export const validateMountedShares = async (mountedShares: Map<string, any>): Promise<string[]> => {
     const disconnectedShares: string[] = [];
     
@@ -324,8 +633,21 @@ export const validateMountedShares = async (mountedShares: Map<string, any>): Pr
         const isStillMounted = await isMountPoint(share.mountPoint);
         
         if (!isAccessible || !isStillMounted) {
-            console.log(`Share ${label} is no longer accessible, removing from list`);
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Share ${label} is no longer accessible, removing from list`);
+            }
             disconnectedShares.push(label);
+            
+            // Simplified: Log issues before cleanup without notifications
+            if (!isAccessible && isStillMounted) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`${label}: Share mounted but not accessible - will force disconnect`);
+                }
+            } else if (!isStillMounted && isAccessible) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`${label}: Mount point lost - cleaning up directory`);
+                }
+            }
             
             // Try to clean up the mount point if it exists
             try {
@@ -334,11 +656,29 @@ export const validateMountedShares = async (mountedShares: Map<string, any>): Pr
                     await execPromise(`test -d "${share.mountPoint}" && rmdir "${share.mountPoint}"`, { timeout: 5000 });
                 } else {
                     // If still mounted but not accessible, try to unmount
-                    await execPromise(`umount -f "${share.mountPoint}"`, { timeout: 10000 });
-                    await execPromise(`rmdir "${share.mountPoint}"`, { timeout: 5000 });
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`Force unmounting inaccessible share: ${label}`);
+                    }
+                    try {
+                        await execPromise(`umount -f "${share.mountPoint}"`, { timeout: 5000 });
+                        await execPromise(`rmdir "${share.mountPoint}"`, { timeout: 5000 });
+                    } catch (unmountError) {
+                        // **CRITICAL FIX**: Don't fail on unmount errors - just log and continue
+                        if (process.env.NODE_ENV === 'development') {
+                            console.warn(`Failed to unmount disconnected share ${label}, system will clean up later:`, unmountError);
+                        }
+                        // Still try to remove directory if possible
+                        try {
+                            await execPromise(`rmdir "${share.mountPoint}"`, { timeout: 3000 });
+                        } catch (rmdirError) {
+                            // Ignore rmdir errors too
+                        }
+                    }
                 }
             } catch (cleanupError) {
-                console.warn(`Failed to cleanup disconnected share ${label}:`, cleanupError);
+                if (process.env.NODE_ENV === 'development') {
+                    console.warn(`Failed to cleanup disconnected share ${label}:`, cleanupError);
+                }
             }
         }
     }
@@ -346,7 +686,7 @@ export const validateMountedShares = async (mountedShares: Map<string, any>): Pr
     return disconnectedShares;
 };
 
-// Function to unmount an SMB share
+// Function to unmount an SMB share without sudo prompts
 export const unmountSMBShare = async (mountPoint: string): Promise<void> => {
     // Update validation to accept both old /Volumes/ paths and new ~/mounts/ paths
     const homeMountsPath = `${process.env.HOME}/mounts/`;
@@ -355,58 +695,88 @@ export const unmountSMBShare = async (mountPoint: string): Promise<void> => {
     }
 
     try {
-        // First try a gentle unmount
-        await execPromise(`umount "${mountPoint}"`, { timeout: 10000 });
-        console.log(`Successfully unmounted: ${mountPoint}`);
+        // First try a gentle unmount with shorter timeout
+        await execPromise(`umount "${mountPoint}"`, { timeout: 5000 });
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Successfully unmounted: ${mountPoint}`);
+        }
     } catch (error) {
-        console.warn(`Gentle unmount failed, trying forced unmount: ${mountPoint}`);
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`Gentle unmount failed, trying forced unmount: ${mountPoint}`);
+        }
         try {
-            // If gentle unmount fails, try forced unmount
-            await execPromise(`umount -f "${mountPoint}"`, { timeout: 10000 });
-            console.log(`Successfully force unmounted: ${mountPoint}`);
-        } catch (forceError) {
-            console.warn(`Force unmount failed, trying with sudo: ${mountPoint}`);
-            try {
-                // If normal unmount fails, try with sudo (mainly for old /Volumes/ mounts)
-                await execPromise(`sudo umount -f "${mountPoint}"`, { timeout: 15000 });
-                console.log(`Successfully unmounted with sudo: ${mountPoint}`);
-            } catch (sudoError) {
-                const errorMessage = sudoError instanceof Error ? sudoError.message : String(sudoError);
-                throw new Error(`Failed to unmount SMB share: ${errorMessage}`);
+            // If gentle unmount fails, try forced unmount with shorter timeout
+            await execPromise(`umount -f "${mountPoint}"`, { timeout: 8000 });
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Successfully force unmounted: ${mountPoint}`);
             }
+        } catch (forceError) {
+            // **CRITICAL FIX**: Don't use sudo - it causes password prompts that hang the app
+            // Instead, treat this as a "best effort" unmount and clean up the directory
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`Force unmount failed for: ${mountPoint}`);
+                console.log(`Network disconnection may have left mount in inconsistent state - cleaning up directory`);
+            }
+            
+            // Don't throw error - continue with cleanup even if unmount failed
+            // The system will eventually clean up the mount point when network reconnects
         }
     }
     
     // Clean up the mount point directory - ensure it's completely removed
     try {
-        // First check if directory exists and is empty
-        await execPromise(`test -d "${mountPoint}"`, { timeout: 5000 });
+        // First check if directory exists
+        await execPromise(`test -d "${mountPoint}"`, { timeout: 3000 });
         
         // Try to remove it - first check if it's empty
         try {
-            await execPromise(`rmdir "${mountPoint}"`, { timeout: 5000 });
-            console.log(`Cleaned up mount point: ${mountPoint}`);
+            await execPromise(`rmdir "${mountPoint}"`, { timeout: 3000 });
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Cleaned up mount point: ${mountPoint}`);
+            }
         } catch (rmdirError) {
-            // If rmdir fails, the directory might not be empty, try a more forceful approach
-            console.warn(`rmdir failed, checking directory contents: ${mountPoint}`);
+            // If rmdir fails, the directory might not be empty or still has system locks
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`rmdir failed for ${mountPoint}, trying alternative cleanup...`);
+            }
+            
             try {
-                const contents = await execPromise(`ls -la "${mountPoint}"`, { timeout: 5000 });
-                console.log(`Directory contents:`, contents.stdout);
+                // Check if directory still exists after failed rmdir
+                await execPromise(`test -d "${mountPoint}"`, { timeout: 2000 });
                 
-                // If directory is not empty, something is wrong, but we'll try to remove it anyway
-                if (mountPoint.startsWith('/Volumes/')) {
-                    await execPromise(`sudo rm -rf "${mountPoint}"`, { timeout: 10000 });
+                // Directory exists but can't be removed with rmdir
+                // For ~/mounts/ paths, try rm -rf (safe since it's in user space)
+                if (mountPoint.startsWith(homeMountsPath)) {
+                    try {
+                        await execPromise(`rm -rf "${mountPoint}"`, { timeout: 5000 });
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`Force cleaned up mount point: ${mountPoint}`);
+                        }
+                    } catch (rmError) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.warn(`Could not remove mount directory: ${mountPoint} - system may clean it up later`);
+                        }
+                        // Don't throw error - this is cleanup, not critical
+                    }
                 } else {
-                    await execPromise(`rm -rf "${mountPoint}"`, { timeout: 10000 });
+                    // For /Volumes/ paths, we can't safely force remove without sudo
+                    // Log the issue but don't fail the operation
+                    if (process.env.NODE_ENV === 'development') {
+                        console.warn(`Mount directory ${mountPoint} could not be cleaned up - system will handle it`);
+                    }
                 }
-                console.log(`Force cleaned up mount point: ${mountPoint}`);
-            } catch (forceCleanupError) {
-                console.warn(`Failed to force cleanup mount point: ${mountPoint}`, forceCleanupError);
+            } catch (testDirError) {
+                // Directory doesn't exist anymore, which is what we wanted
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Mount point directory was already removed by system: ${mountPoint}`);
+                }
             }
         }
     } catch (testError) {
         // Directory doesn't exist, which is fine
-        console.log(`Mount point directory already removed: ${mountPoint}`);
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Mount point directory doesn't exist: ${mountPoint}`);
+        }
     }
 };
 

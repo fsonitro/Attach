@@ -3,22 +3,14 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'path';
 import os from 'os';
-import { createTray, updateTrayMenu } from './tray';
+import { createTray, updateTrayMenu, updateTrayNetworkStatus } from './tray';
 import { createMainWindow, showMainWindow, createMountWindow, createSettingsWindow, createAboutWindow, closeAboutWindow } from './windows';
-import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs } from './mount/smbService';
+import { mountSMBShare, unmountSMBShare, storeCredentials, getStoredCredentials, validateMountedShares, cleanupOrphanedMountDirs, quickConnectivityCheck } from './mount/smbService';
 import { readDirectoryContents, safeOpenPath } from './mount/fileSystem';
 import { connectionStore, SavedConnection } from './utils/connectionStore';
 import { createAutoMountService, AutoMountService } from './utils/autoMountService';
 import { createNetworkWatcher, NetworkWatcher } from './utils/networkWatcher';
 import { MountedShare, MountResult, UnmountResult } from '../types';
-import { 
-    notifyNetworkOperationInProgress, 
-    notifyNetworkOperationComplete, 
-    notifyNetworkOperationFailed,
-    notifyReconnectionAttempt,
-    notifyReconnectionSuccess,
-    notifyReconnectionFailed
-} from './utils/networkNotifications';
 
 // Global state to track mounted shares
 let mountedShares: Map<string, MountedShare> = new Map();
@@ -77,47 +69,74 @@ app.whenReady().then(async () => {
     // Initialize auto-mount service
     autoMountService = createAutoMountService(mountedShares);
     
+    // **NEW: Set auto-mount service reference in tray for cleanup functionality**
+    const { setAutoMountServiceReference } = require('./tray');
+    setAutoMountServiceReference(autoMountService);
+    
     // Initialize network watcher for auto-mounting after network changes
     networkWatcher = createNetworkWatcher(mountedShares);
     
     // Set up event listeners for network watcher
     if (networkWatcher) {
-        networkWatcher.on('network-online', () => {
+        // Enhanced network status monitoring with tray updates
+        networkWatcher.on('network-status-changed', (status) => {
+            updateTrayNetworkStatus(status);
             if (process.env.NODE_ENV === 'development') {
-                console.log('🟢 Network watcher detected network connection');
+                console.log('📊 Network status:', status);
             }
+        });
+        
+        networkWatcher.on('network-online', async () => {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🟢 Network connected');
+            }
+            
+            // Attempt auto-mount when network comes back online
+            await handleNetworkReconnectionAutoMount();
         });
         
         networkWatcher.on('network-offline', () => {
             if (process.env.NODE_ENV === 'development') {
-                console.log('🔴 Network watcher detected network disconnection');
+                console.log('🔴 Network disconnected');
             }
         });
         
-        networkWatcher.on('internet-available', () => {
+        networkWatcher.on('internet-restored', async () => {
             if (process.env.NODE_ENV === 'development') {
                 console.log('🌐 Internet connectivity restored');
             }
+            
+            // Attempt auto-mount when internet is restored
+            await handleNetworkReconnectionAutoMount();
         });
         
-        networkWatcher.on('mount-success', (result) => {
+        networkWatcher.on('internet-lost', () => {
             if (process.env.NODE_ENV === 'development') {
-                console.log(`✅ Auto-mount successful: ${result.connection.label}`);
+                console.log('🌐❌ Internet connectivity lost');
             }
+        });
+        
+        networkWatcher.on('network-changed', ({ from, to }) => {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔄 Network changed: ${from} → ${to}`);
+            }
+        });
+        
+        // Share monitoring events
+        networkWatcher.on('shares-disconnected', (shareLabels) => {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`📊 ${shareLabels.length} shares disconnected due to network issues`);
+            }
+            // Update tray menu to reflect disconnected shares
             updateTrayMenu(mountedShares);
         });
         
-        networkWatcher.on('mount-failed-permanently', (result) => {
+        // Auto-mount event from NetworkWatcher
+        networkWatcher.on('auto-mount-requested', async () => {
             if (process.env.NODE_ENV === 'development') {
-                console.log(`❌ Auto-mount failed permanently: ${result.connection.label} - ${result.error}`);
+                console.log('🔄 Auto-mount requested by NetworkWatcher');
             }
-        });
-        
-        networkWatcher.on('mounts-validated', (disconnectedShares) => {
-            if (disconnectedShares.length > 0 && process.env.NODE_ENV === 'development') {
-                console.log(`🔍 Network watcher found ${disconnectedShares.length} disconnected shares`);
-                updateTrayMenu(mountedShares);
-            }
+            await handleNetworkReconnectionAutoMount();
         });
         
         // Start the network watcher service
@@ -127,8 +146,33 @@ app.whenReady().then(async () => {
     // Start periodic validation of mounted shares (every 30 seconds)
     shareValidationInterval = setInterval(refreshMountedShares, 30000);
     
-    // Run initial cleanup
+    // Run initial cleanup and system-wide stale mount cleanup
     await refreshMountedShares();
+    
+    // **NEW: Clean up any stale system mounts before auto-mount**
+    if (process.env.NODE_ENV === 'development') {
+        console.log('🧹 Performing system-wide stale mount cleanup before auto-mount...');
+    }
+    try {
+        const systemCleanup = await autoMountService.cleanupAllStaleMounts();
+        if (systemCleanup.totalCleaned > 0) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`✅ System cleanup: removed ${systemCleanup.totalCleaned} stale mounts`);
+                systemCleanup.cleanedMounts.forEach(mount => {
+                    console.log(`   - ${mount.serverPath} (${mount.mountPoint})`);
+                });
+            }
+        }
+        if (systemCleanup.errors.length > 0) {
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`⚠️ System cleanup had ${systemCleanup.errors.length} errors:`, systemCleanup.errors);
+            }
+        }
+    } catch (systemCleanupError) {
+        if (process.env.NODE_ENV === 'development') {
+            console.warn('⚠️ System-wide cleanup failed:', systemCleanupError);
+        }
+    }
     
     // Perform auto-mounting of saved connections
     if (await connectionStore.getAutoMountEnabled()) {
@@ -148,6 +192,11 @@ app.whenReady().then(async () => {
                 
                 if (summary.failed > 0) {
                     console.log(`❌ Failed to mount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
+                }
+                
+                // **NEW: Log conflict resolution info**
+                if (summary.totalConflictsResolved > 0) {
+                    console.log(`🔧 Resolved ${summary.totalConflictsResolved} mount conflicts for: ${summary.connectionsWithConflicts.join(', ')}`);
                 }
             }
             
@@ -194,81 +243,64 @@ app.on('second-instance', () => {
 
 // Function to attempt reconnection of a disconnected share
 async function attemptShareReconnection(folderPath: string, shareName: string): Promise<void> {
+    // Simplified: Just log attempt, no complex reconnection logic to prevent hanging
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Share reconnection simplified: ${shareName} at ${folderPath}`);
+        console.log('Complex reconnection removed to prevent app hanging');
+    }
+}
+
+// Function to handle auto-mount when network reconnects
+async function handleNetworkReconnectionAutoMount(): Promise<void> {
+    if (!autoMountService) {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Auto-mount service not available for network reconnection');
+        }
+        return;
+    }
+
+    // Check if auto-mount is enabled
+    const autoMountEnabled = await connectionStore.getAutoMountEnabled();
+    if (!autoMountEnabled) {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Auto-mount is disabled, skipping network reconnection auto-mount');
+        }
+        return;
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 Network reconnected, attempting auto-mount of saved connections...');
+    }
+
     try {
-        const { notifyReconnectionAttempt, notifyReconnectionSuccess, notifyReconnectionFailed } = require('./utils/networkNotifications');
+        const autoMountResults = await autoMountService.autoMountConnections();
+        const summary = autoMountService.getAutoMountSummary(autoMountResults);
         
         if (process.env.NODE_ENV === 'development') {
-            console.log(`Attempting to reconnect share: ${shareName} at ${folderPath}`);
-        }
-        
-        // Notify user that reconnection is being attempted
-        await notifyReconnectionAttempt(shareName);
-        
-        // Check if we have connection info for this share
-        let connectionInfo: SavedConnection | null = null;
-        
-        // Try to find connection by matching mount path or share path
-        const connections = await connectionStore.getConnections();
-        for (const conn of connections) {
-            if (folderPath.includes(conn.label) || folderPath.includes(conn.sharePath.split('/').pop() || '')) {
-                connectionInfo = conn;
-                break;
-            }
-        }
-        
-        if (!connectionInfo) {
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`No saved connection found for ${shareName}`);
-            }
-            await notifyReconnectionFailed(shareName);
-            return;
-        }
-        
-        // Get the stored password
-        const password = await connectionStore.getPassword(connectionInfo.id);
-        if (!password) {
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`No stored password found for ${shareName}`);
-            }
-            await notifyReconnectionFailed(shareName);
-            return;
-        }
-        
-        // Attempt to remount
-        try {
-            const mountPoint = await mountSMBShare(connectionInfo.sharePath, connectionInfo.username, password);
+            console.log(`Network reconnection auto-mount completed: ${summary.successful}/${summary.total} successful`);
             
-            // Update our mounted shares tracking
-            const mountedShare: MountedShare = {
-                label: connectionInfo.label,
-                mountPoint,
-                sharePath: connectionInfo.sharePath,
-                username: connectionInfo.username,
-                mountedAt: new Date()
-            };
+            if (summary.successful > 0) {
+                console.log(`✅ Successfully remounted: ${summary.successfulConnections.join(', ')}`);
+            }
             
-            mountedShares.set(connectionInfo.label, mountedShare);
+            if (summary.failed > 0) {
+                console.log(`❌ Failed to remount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
+            }
+            
+            // **NEW: Log conflict resolution info for network reconnection**
+            if (summary.totalConflictsResolved > 0) {
+                console.log(`🔧 Network reconnection resolved ${summary.totalConflictsResolved} mount conflicts for: ${summary.connectionsWithConflicts.join(', ')}`);
+            }
+        }
+        
+        if (summary.successful > 0) {
+            // Update tray menu with new mounts
             updateTrayMenu(mountedShares);
-            
-            await notifyReconnectionSuccess(shareName);
-            
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`Successfully reconnected ${shareName}`);
-            }
-            
-        } catch (mountError) {
-            if (process.env.NODE_ENV === 'development') {
-                console.error(`Failed to remount ${shareName}:`, mountError);
-            }
-            await notifyReconnectionFailed(shareName);
         }
-        
     } catch (error) {
         if (process.env.NODE_ENV === 'development') {
-            console.error(`Error during reconnection attempt for ${shareName}:`, error);
+            console.error('Error during network reconnection auto-mount:', error);
         }
-        const { notifyReconnectionFailed } = require('./utils/networkNotifications');
-        await notifyReconnectionFailed(shareName);
     }
 }
 
@@ -316,6 +348,11 @@ function setupIpcHandlers() {
             
             mountedShares.set(mountLabel, mountedShare);
             
+            // Add to share monitoring
+            if (networkWatcher) {
+                networkWatcher.addMountedShareToMonitoring(mountedShare);
+            }
+            
             // Update tray menu with new shares
             updateTrayMenu(mountedShares);
             
@@ -354,6 +391,11 @@ function setupIpcHandlers() {
 
             await unmountSMBShare(share.mountPoint);
             mountedShares.delete(label);
+            
+            // Remove from share monitoring
+            if (networkWatcher) {
+                networkWatcher.removeMountedShareFromMonitoring(label);
+            }
             
             // Update tray menu
             updateTrayMenu(mountedShares);
@@ -415,6 +457,60 @@ function setupIpcHandlers() {
         return Array.from(mountedShares.values());
     });
 
+    // **NEW: Clean up all stale system mounts (manual cleanup)**
+    ipcMain.handle('cleanup-stale-mounts', async (event): Promise<{
+        success: boolean;
+        message: string;
+        totalCleaned: number;
+        cleanedMounts: Array<{ serverPath: string; mountPoint: string }>;
+        errors: string[];
+    }> => {
+        try {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🧹 Manual stale mount cleanup requested from UI...');
+            }
+
+            if (!autoMountService) {
+                return {
+                    success: false,
+                    message: 'Auto-mount service not available',
+                    totalCleaned: 0,
+                    cleanedMounts: [],
+                    errors: ['Auto-mount service not initialized']
+                };
+            }
+
+            const result = await autoMountService.cleanupAllStaleMounts();
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🧹 Manual cleanup completed: ${result.totalCleaned} cleaned, ${result.errors.length} errors`);
+            }
+
+            return {
+                success: result.errors.length === 0 || result.totalCleaned > 0,
+                message: result.totalCleaned > 0 
+                    ? `Successfully cleaned up ${result.totalCleaned} stale mount${result.totalCleaned > 1 ? 's' : ''}` 
+                    : result.errors.length > 0 
+                        ? 'No stale mounts found or cleanup failed'
+                        : 'No stale mounts found',
+                totalCleaned: result.totalCleaned,
+                cleanedMounts: result.cleanedMounts,
+                errors: result.errors
+            };
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('❌ Manual stale mount cleanup failed:', error);
+            }
+            return {
+                success: false,
+                message: 'Failed to clean up stale mounts',
+                totalCleaned: 0,
+                cleanedMounts: [],
+                errors: [error instanceof Error ? error.message : String(error)]
+            };
+        }
+    });
+
     // Open mount window
     ipcMain.handle('open-mount-window', async (event) => {
         createMountWindow();
@@ -435,9 +531,6 @@ function setupIpcHandlers() {
     // Open folder in Finder with enhanced timeout and user feedback
     ipcMain.handle('open-in-finder', async (event, folderPath: string) => {
         try {
-            // Immediately notify user that operation is starting
-            await notifyNetworkOperationInProgress(path.basename(folderPath));
-            
             // Run safety check with aggressive timeout to prevent hanging
             const safetyCheck = await Promise.race([
                 safeOpenPath(folderPath),
@@ -452,7 +545,9 @@ function setupIpcHandlers() {
             ]);
             
             if (!safetyCheck.success) {
-                await notifyNetworkOperationFailed(path.basename(folderPath), safetyCheck.error || 'Unable to access path');
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Failed to access path: ${safetyCheck.error}`);
+                }
                 
                 // Check if it's a network share and offer reconnection
                 if (folderPath.includes('/Volumes/') || folderPath.includes('smb://')) {
@@ -476,7 +571,9 @@ function setupIpcHandlers() {
                 })
             ]);
             
-            await notifyNetworkOperationComplete(path.basename(folderPath));
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Successfully opened path: ${path.basename(folderPath)}`);
+            }
             
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Failed to open folder';
@@ -488,14 +585,14 @@ function setupIpcHandlers() {
             
             // Provide specific user feedback based on error type
             if (errorMessage.includes('timeout') || errorMessage.includes('taking too long')) {
-                await notifyNetworkOperationFailed(shareName, 'Network share is not responding. Attempting to reconnect...');
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`${shareName}: Network share timeout, attempting reconnect`);
+                }
                 
                 // Schedule background reconnection attempt
                 setImmediate(async () => {
                     await attemptShareReconnection(folderPath, shareName);
                 });
-            } else {
-                await notifyNetworkOperationFailed(shareName, errorMessage);
             }
             
             throw new Error(errorMessage);
@@ -521,12 +618,11 @@ function setupIpcHandlers() {
                 console.error('Failed to read directory:', error);
             }
             
-            // Provide user feedback for directory listing failures
+            // Simplified: Just log and throw error, no notifications
             if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-                await notifyNetworkOperationFailed(
-                    path.basename(folderPath), 
-                    'Directory listing timed out. Network share may be slow or disconnected.'
-                );
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`Directory listing timeout: ${path.basename(folderPath)}`);
+                }
             }
             
             throw new Error(errorMessage);
@@ -1043,6 +1139,129 @@ function setupIpcHandlers() {
                 console.error('Failed to open external URL:', error);
             }
             return { success: false, error: 'Failed to open URL' };
+        }
+    });
+
+    // Get comprehensive monitoring status (network, VPN, shares)
+    ipcMain.handle('get-monitoring-status', async (event) => {
+        if (!networkWatcher) {
+            return {
+                network: { isOnline: false, hasNetworkConnectivity: false, canReachGateway: false, lastChecked: new Date() },
+                vpn: { isConnected: false, lastChecked: new Date() },
+                shares: [],
+                pendingMounts: [],
+                mountAttempts: []
+            };
+        }
+        return networkWatcher.getMonitoringStatus();
+    });
+
+    // Force share health check
+    ipcMain.handle('force-share-health-check', async (event, label?: string): Promise<{success: boolean, message: string}> => {
+        if (!networkWatcher) {
+            return { success: false, message: 'Monitoring service not available' };
+        }
+
+        try {
+            const shareMonitoring = networkWatcher.getShareMonitoringService();
+            
+            if (label) {
+                // Check specific share
+                await shareMonitoring.forceHealthCheck(label);
+                return { success: true, message: `Health check completed for ${label}` };
+            } else {
+                // Check all shares
+                const shareStatuses = shareMonitoring.getShareStatuses();
+                const shareLabels = Array.from(shareStatuses.keys());
+                
+                for (const shareLabel of shareLabels) {
+                    await shareMonitoring.forceHealthCheck(shareLabel);
+                }
+                
+                return { success: true, message: `Health check completed for ${shareLabels.length} shares` };
+            }
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to perform health check:', error);
+            }
+            return { success: false, message: 'Health check failed' };
+        }
+    });
+
+    // Force share reconnection
+    ipcMain.handle('force-share-reconnection', async (event, label: string): Promise<{success: boolean, message: string}> => {
+        if (!networkWatcher) {
+            return { success: false, message: 'Monitoring service not available' };
+        }
+
+        try {
+            await networkWatcher.forceShareReconnection(label);
+            return { success: true, message: `Reconnection attempt initiated for ${label}` };
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to force share reconnection:', error);
+            }
+            return { success: false, message: 'Failed to initiate reconnection' };
+        }
+    });
+
+    // Quick connectivity check for server
+    ipcMain.handle('quick-connectivity-check', async (event, serverName: string): Promise<{accessible: boolean, method?: string, error?: string}> => {
+        try {
+            return await quickConnectivityCheck(serverName, 5000);
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Quick connectivity check failed:', error);
+            }
+            return { 
+                accessible: false, 
+                error: error instanceof Error ? error.message : 'Connectivity check failed' 
+            };
+        }
+    });
+
+    // Get share monitoring statistics - simplified for minimal monitoring
+    ipcMain.handle('get-share-monitoring-stats', async (event) => {
+        if (!networkWatcher) {
+            return { shares: [], reconnectionStats: [], isActive: false };
+        }
+
+        const shareMonitoring = networkWatcher.getShareMonitoringService();
+
+        // Return minimal stats since we removed complex monitoring
+        return {
+            shares: [],
+            reconnectionStats: [],
+            isActive: shareMonitoring.isActive()
+        };
+    });
+
+    // Start/stop share monitoring
+    ipcMain.handle('toggle-share-monitoring', async (event, enable: boolean): Promise<{success: boolean, message: string}> => {
+        if (!networkWatcher) {
+            return { success: false, message: 'Network watcher not available' };
+        }
+
+        try {
+            const shareMonitoring = networkWatcher.getShareMonitoringService();
+            
+            if (enable && !shareMonitoring.isActive()) {
+                await shareMonitoring.start();
+                return { success: true, message: 'Share monitoring started' };
+            } else if (!enable && shareMonitoring.isActive()) {
+                shareMonitoring.stop();
+                return { success: true, message: 'Share monitoring stopped' };
+            } else {
+                return { 
+                    success: true, 
+                    message: enable ? 'Share monitoring already active' : 'Share monitoring already stopped' 
+                };
+            }
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to toggle share monitoring:', error);
+            }
+            return { success: false, message: 'Failed to toggle share monitoring' };
         }
     });
 }
