@@ -11,20 +11,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Get DOM elements
     const closeBtn = document.getElementById('closeBtn');
-    const acknowledgementsBtn = document.getElementById('acknowledgementsBtn');
-    const acknowledgementsModal = document.getElementById('acknowledgementsModal');
-    const closeModalBtn = document.getElementById('closeModalBtn');
     const appVersionElement = document.getElementById('appVersion');
     const currentYearElement = document.getElementById('currentYear');
-    const electronVersionElement = document.getElementById('electronVersion');
-    const nodeVersionElement = document.getElementById('nodeVersion');
-    const platformElement = document.getElementById('platform');
 
     // Set current year
     currentYearElement.textContent = new Date().getFullYear().toString();
 
-    // Load system information
-    await loadSystemInfo();
+    // Set the version
+    appVersionElement.textContent = 'Version 0.0.9';
 
     // Fix icon path
     await fixIconPath();
@@ -75,87 +69,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function loadSystemInfo() {
-        try {
-            // Get system info from the main process
-            if (window.api && window.api.getSystemInfo) {
-                const systemInfo = await window.api.getSystemInfo();
-                
-                if (systemInfo.electronVersion) {
-                    electronVersionElement.textContent = systemInfo.electronVersion;
-                }
-                if (systemInfo.nodeVersion) {
-                    nodeVersionElement.textContent = systemInfo.nodeVersion;
-                }
-                if (systemInfo.platform) {
-                    platformElement.textContent = systemInfo.platform;
-                }
-                if (systemInfo.appVersion) {
-                    appVersionElement.textContent = `Version ${systemInfo.appVersion}`;
-                }
-            } else {
-                // Fallback values
-                electronVersionElement.textContent = 'Unknown';
-                nodeVersionElement.textContent = 'Unknown';
-                platformElement.textContent = 'macOS';
-            }
-        } catch (error) {
-            console.warn('Failed to load system info:', error);
-            // Set fallback values
-            electronVersionElement.textContent = 'Unknown';
-            nodeVersionElement.textContent = 'Unknown';
-            platformElement.textContent = 'macOS';
-        }
-    }
-
     function setupEventListeners() {
         // Close button
         closeBtn?.addEventListener('click', closeWindow);
 
-        // Acknowledgements button
-        acknowledgementsBtn?.addEventListener('click', showAcknowledgements);
-
-        // Close modal button
-        closeModalBtn?.addEventListener('click', hideAcknowledgements);
-
-        // Close modal when clicking outside
-        acknowledgementsModal?.addEventListener('click', (event) => {
-            if (event.target === acknowledgementsModal) {
-                hideAcknowledgements();
-            }
-        });
-
         // Keyboard shortcuts
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
-                if (acknowledgementsModal?.classList.contains('show')) {
-                    hideAcknowledgements();
-                } else {
-                    closeWindow();
-                }
+                closeWindow();
             } else if ((event.metaKey || event.ctrlKey) && event.key === 'w') {
                 event.preventDefault();
                 closeWindow();
             }
         });
-
-        // Handle external links
-        document.addEventListener('click', (event) => {
-            if (event.target.tagName === 'A' && event.target.href.startsWith('http')) {
-                event.preventDefault();
-                if (window.api && window.api.openExternal) {
-                    window.api.openExternal(event.target.href);
-                }
-            }
-        });
-    }
-
-    function showAcknowledgements() {
-        acknowledgementsModal?.classList.add('show');
-    }
-
-    function hideAcknowledgements() {
-        acknowledgementsModal?.classList.remove('show');
     }
 
     async function closeWindow() {

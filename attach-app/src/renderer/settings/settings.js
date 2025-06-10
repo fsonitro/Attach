@@ -14,10 +14,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         startAtLogin: document.getElementById('startAtLogin'),
         rememberCredentials: document.getElementById('rememberCredentials'),
         autoMountEnabled: document.getElementById('autoMountEnabled'),
-        networkWatcherEnabled: document.getElementById('networkWatcherEnabled'),
-        checkInterval: document.getElementById('checkInterval'),
-        retryAttempts: document.getElementById('retryAttempts'),
-        retryDelay: document.getElementById('retryDelay'),
         mountLocation: document.getElementById('mountLocation'),
         viewSavedConnections: document.getElementById('viewSavedConnections'),
         clearAllData: document.getElementById('clearAllData'),
@@ -52,17 +48,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             elements.startAtLogin.checked = settings.startAtLogin;
             elements.rememberCredentials.checked = settings.rememberCredentials;
             elements.autoMountEnabled.checked = settings.autoMountEnabled;
-            elements.networkWatcherEnabled.checked = settings.networkWatcher.enabled;
-            elements.checkInterval.value = settings.networkWatcher.checkInterval;
-            elements.retryAttempts.value = settings.networkWatcher.retryAttempts;
-            elements.retryDelay.value = settings.networkWatcher.retryDelay;
             elements.mountLocation.value = settings.mountLocation;
 
             // Load saved connections dropdown
             await loadSavedConnectionsDropdown();
-
-            // Update network settings visibility
-            updateNetworkSettingsVisibility();
 
         } catch (error) {
             showStatus('Failed to load settings', 'error');
@@ -74,15 +63,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         elements.startAtLogin.addEventListener('change', handleSettingChange);
         elements.rememberCredentials.addEventListener('change', handleSettingChange);
         elements.autoMountEnabled.addEventListener('change', handleSettingChange);
-        elements.networkWatcherEnabled.addEventListener('change', (e) => {
-            handleSettingChange(e);
-            updateNetworkSettingsVisibility();
-        });
-
-        // Number input change handlers
-        elements.checkInterval.addEventListener('change', handleSettingChange);
-        elements.retryAttempts.addEventListener('change', handleSettingChange);
-        elements.retryDelay.addEventListener('change', handleSettingChange);
 
         // Path input change handler (note: mount location is now read-only)
         // elements.mountLocation.addEventListener('change', handleSettingChange);
@@ -128,18 +108,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             case 'autoMountEnabled':
                 currentSettings.autoMountEnabled = value;
                 break;
-            case 'networkWatcherEnabled':
-                currentSettings.networkWatcher.enabled = value;
-                break;
-            case 'checkInterval':
-                currentSettings.networkWatcher.checkInterval = parseInt(value);
-                break;
-            case 'retryAttempts':
-                currentSettings.networkWatcher.retryAttempts = parseInt(value);
-                break;
-            case 'retryDelay':
-                currentSettings.networkWatcher.retryDelay = parseInt(value);
-                break;
             case 'mountLocation':
                 currentSettings.mountLocation = value;
                 break;
@@ -147,20 +115,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Update save button state
         updateSaveButtonState();
-    }
-
-    function updateNetworkSettingsVisibility() {
-        const networkSettings = document.querySelectorAll('.network-settings');
-        const enabled = elements.networkWatcherEnabled.checked;
-
-        networkSettings.forEach(setting => {
-            setting.classList.toggle('enabled', enabled);
-        });
-
-        // Enable/disable network setting inputs
-        elements.checkInterval.disabled = !enabled;
-        elements.retryAttempts.disabled = !enabled;
-        elements.retryDelay.disabled = !enabled;
     }
 
     function updateSaveButtonState() {
@@ -243,12 +197,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     autoMountEnabled: true,
                     rememberCredentials: true,
                     startAtLogin: false,
-                    networkWatcher: {
-                        enabled: true,
-                        checkInterval: 15,
-                        retryAttempts: 5,
-                        retryDelay: 2
-                    },
                     mountLocation: `${await window.api.getHomeDirectory()}/mounts`
                 };
 
@@ -258,13 +206,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 elements.startAtLogin.checked = defaultSettings.startAtLogin;
                 elements.rememberCredentials.checked = defaultSettings.rememberCredentials;
                 elements.autoMountEnabled.checked = defaultSettings.autoMountEnabled;
-                elements.networkWatcherEnabled.checked = defaultSettings.networkWatcher.enabled;
-                elements.checkInterval.value = defaultSettings.networkWatcher.checkInterval;
-                elements.retryAttempts.value = defaultSettings.networkWatcher.retryAttempts;
-                elements.retryDelay.value = defaultSettings.networkWatcher.retryDelay;
                 elements.mountLocation.value = defaultSettings.mountLocation;
 
-                updateNetworkSettingsVisibility();
                 updateSaveButtonState();
 
                 showStatus('Settings reset to defaults', 'info');

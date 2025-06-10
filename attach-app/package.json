@@ -1,6 +1,6 @@
 {
   "name": "attach",
-  "version": "1.0.0",
+  "version": "0.0.9",
   "description": "A macOS Electron app to mount and browse network shares.",
   "main": "dist/main/index.js",
   "scripts": {

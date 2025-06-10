@@ -220,8 +220,8 @@ export const createAboutWindow = () => {
     }
 
     aboutWindow = new BrowserWindow({
-        width: 500,
-        height: 600,
+        width: 400,
+        height: 380,
         webPreferences: {
             preload: app.isPackaged 
                 ? path.join(__dirname, '../preload/index.js')
