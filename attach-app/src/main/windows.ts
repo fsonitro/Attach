@@ -55,8 +55,8 @@ export const createMainWindow = () => {
     }
 
     mainWindow = new BrowserWindow({
-        width: 460,
-        height: 580,
+        width: 420,
+        height: 520,
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
