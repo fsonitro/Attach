@@ -1,8 +1,8 @@
 {
   "appId": "com.example.attachapp",
   "productName": "Attach",
-  "copyright": "Copyright © 2023 Your Name",
-  "version": "1.0.0",
+  "copyright": "Copyright © 2025 Felipe",
+  "version": "0.0.9",
   "files": [
     "dist/**/*",
     "src/**/*",
