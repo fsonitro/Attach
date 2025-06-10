@@ -91,6 +91,29 @@ function getNetworkStatusLabel(): string {
     }
 }
 
+/**
+ * Get smart label for "Open Folder" based on network and mount status
+ */
+function getOpenFolderLabel(): string {
+    if (mountedShares.size === 0) {
+        return '📁 Open Folder (No shares mounted)';
+    }
+    
+    if (!currentNetworkStatus || !currentNetworkStatus.isOnline) {
+        return '📁 Open Folder (Network offline - Read Only)';
+    }
+    
+    return '📁 Open Folder';
+}
+
+/**
+ * Check if it's safe to open folder (fast network-aware check)
+ */
+function isOpenFolderSafe(): boolean {
+    // Only allow if shares are mounted
+    return mountedShares.size > 0;
+}
+
 export function updateTrayMenu(shares?: Map<string, any>) {
     if (!tray) return;
     
@@ -148,18 +171,44 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             }
         },
         {
-            label: 'Open Folder',
-            enabled: mountedShares.size > 0,
+            label: getOpenFolderLabel(),
+            enabled: isOpenFolderSafe(),
             click: async () => {
                 try {
                     if (mountedShares.size === 0) {
                         return;
                     }
 
-                    // Check network connectivity first
-                    if (currentNetworkStatus && !currentNetworkStatus.isOnline) {
+                    // **FAST NETWORK CHECK**: Perform immediate real-time network check for faster response
+                    const { checkNetworkConnectivity } = require('./utils/networkWatcher');
+                    let isNetworkOnline = currentNetworkStatus?.isOnline || false;
+                    
+                    // If network status is stale (older than 2 seconds), do immediate check
+                    const statusAge = currentNetworkStatus ? Date.now() - currentNetworkStatus.lastChecked.getTime() : Infinity;
+                    if (statusAge > 2000) {
                         if (process.env.NODE_ENV === 'development') {
-                            console.log('Cannot open folder: Network is disconnected');
+                            console.log('🔄 Performing immediate network check for Open Folder...');
+                        }
+                        
+                        try {
+                            // Fast network check with 1 second timeout
+                            const quickNetworkCheck = await Promise.race([
+                                checkNetworkConnectivity(),
+                                new Promise<{isOnline: boolean}>((resolve) => {
+                                    setTimeout(() => resolve({isOnline: false}), 1000);
+                                })
+                            ]);
+                            isNetworkOnline = quickNetworkCheck.isOnline;
+                        } catch (error) {
+                            // If quick check fails, assume offline for safety
+                            isNetworkOnline = false;
+                        }
+                    }
+
+                    // Check network connectivity (immediate or cached)
+                    if (!isNetworkOnline) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log('🚫 Cannot open folder: Network is disconnected (immediate check)');
                         }
                         
                         // Import essential notifications for user feedback

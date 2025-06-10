@@ -227,6 +227,28 @@ export class NetworkWatcher extends EventEmitter {
     }
 
     /**
+     * **FAST NETWORK CHECK**: Immediate network connectivity check for instant user feedback
+     * Used by tray "Open Folder" to get real-time network status without waiting for periodic checks
+     */
+    async checkNetworkConnectivity(): Promise<{isOnline: boolean, hasInternet: boolean}> {
+        try {
+            const isOnline = await this.isNetworkOnline();
+            const hasInternet = isOnline ? await this.hasInternetConnectivity() : false;
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔄 Fast network check result: online=${isOnline}, internet=${hasInternet}`);
+            }
+            
+            return { isOnline, hasInternet };
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.warn('Fast network check failed:', error);
+            }
+            return { isOnline: false, hasInternet: false };
+        }
+    }
+
+    /**
      * Get current network status
      */
     getNetworkStatus(): NetworkStatus {
@@ -307,4 +329,34 @@ export class NetworkWatcher extends EventEmitter {
 // Factory function
 export function createNetworkWatcher(mountedShares: Map<string, MountedShare>): NetworkWatcher {
     return new NetworkWatcher(mountedShares);
+}
+
+/**
+ * **FAST NETWORK CHECK EXPORT**: Standalone fast network check for immediate use
+ * This allows other modules to quickly check network status without creating a full NetworkWatcher
+ */
+export async function checkNetworkConnectivity(): Promise<{isOnline: boolean, hasInternet: boolean}> {
+    try {
+        // Ultra-fast ping check with minimal timeout
+        const isOnlinePromise = execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: 1000 })
+            .then(() => true)
+            .catch(() => false);
+            
+        const isOnline = await isOnlinePromise;
+        
+        if (!isOnline) {
+            return { isOnline: false, hasInternet: false };
+        }
+        
+        // Quick internet check if network is online
+        const hasInternetPromise = execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: 1500 })
+            .then(() => true)
+            .catch(() => false);
+            
+        const hasInternet = await hasInternetPromise;
+        
+        return { isOnline, hasInternet };
+    } catch (error) {
+        return { isOnline: false, hasInternet: false };
+    }
 }
