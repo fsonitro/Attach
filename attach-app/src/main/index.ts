@@ -10,6 +10,7 @@ import { readDirectoryContents, safeOpenPath } from './mount/fileSystem';
 import { connectionStore, SavedConnection } from './utils/connectionStore';
 import { createAutoMountService, AutoMountService } from './utils/autoMountService';
 import { createNetworkWatcher, NetworkWatcher } from './utils/networkWatcher';
+import { MountCoordinator } from './utils/mountCoordinator';
 import { MountedShare, MountResult, UnmountResult } from '../types';
 
 // Global state to track mounted shares
@@ -18,6 +19,7 @@ let mainWindow: BrowserWindow | null = null;
 let shareValidationInterval: NodeJS.Timeout | null = null;
 let autoMountService: AutoMountService | null = null;
 let networkWatcher: NetworkWatcher | null = null;
+let mountCoordinator: MountCoordinator;
 let isQuitting = false;
 
 // **NEW: Global auto-mount operation lock to prevent race conditions**
@@ -72,6 +74,9 @@ app.whenReady().then(async () => {
     
     // Initialize auto-mount service
     autoMountService = createAutoMountService(mountedShares);
+    
+    // Initialize mount coordinator singleton
+    mountCoordinator = MountCoordinator.getInstance();
     
     // **NEW: Set auto-mount service reference in tray for cleanup functionality**
     const { setAutoMountServiceReference } = require('./tray');
@@ -973,6 +978,73 @@ function setupIpcHandlers() {
         }
         if (settings.rememberCredentials !== undefined) {
             await connectionStore.setRememberCredentials(settings.rememberCredentials);
+        }
+    });
+
+    // Auto-mount enhancement handlers
+    ipcMain.handle('check-for-auto-mountable-connection', async (event, sharePath: string, username?: string): Promise<{
+        hasAutoMountConnection: boolean;
+        connection?: SavedConnection;
+        shouldAutoMount: boolean;
+        canMount: boolean;
+        reason?: string;
+    }> => {
+        try {
+            return await mountCoordinator.checkForAutoMountableConnection(sharePath, username);
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to check for auto-mountable connection:', error);
+            }
+            return {
+                hasAutoMountConnection: false,
+                shouldAutoMount: false,
+                canMount: false,
+                reason: 'Check failed'
+            };
+        }
+    });
+
+    ipcMain.handle('auto-mount-saved-connection', async (event, sharePath: string, username?: string): Promise<{
+        success: boolean;
+        mounted: boolean;
+        connection?: SavedConnection;
+        mountPoint?: string;
+        message: string;
+    }> => {
+        try {
+            const result = await mountCoordinator.autoMountSavedConnection(sharePath, username);
+            
+            // Update tray menu and monitoring if mount was successful
+            if (result.success && result.mounted && result.mountPoint && result.connection) {
+                const mountedShare: MountedShare = {
+                    label: result.connection.label,
+                    mountPoint: result.mountPoint,
+                    sharePath: result.connection.sharePath,
+                    username: result.connection.username,
+                    mountedAt: new Date()
+                };
+                
+                mountedShares.set(result.connection.label, mountedShare);
+                
+                // Add to share monitoring
+                if (networkWatcher) {
+                    networkWatcher.addMountedShareToMonitoring(mountedShare);
+                }
+                
+                // Update tray menu
+                updateTrayMenu(mountedShares);
+            }
+            
+            return result;
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to auto-mount saved connection:', error);
+            }
+            return {
+                success: false,
+                mounted: false,
+                message: 'Auto-mount failed'
+            };
         }
     });
 

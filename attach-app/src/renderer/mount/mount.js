@@ -118,11 +118,81 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.close();
     });
 
-    // Auto-populate credentials when share path changes
+    // Auto-populate credentials when share path changes and check for auto-mount
     sharePathInput.addEventListener('blur', async () => {
         const sharePath = sharePathInput.value.trim();
         if (sharePath && !savedConnectionsSelect.value) {
             try {
+                // First check for auto-mountable connections
+                const autoMountCheck = await window.api.checkForAutoMountableConnection(sharePath, usernameInput.value.trim() || undefined);
+                
+                if (autoMountCheck.hasAutoMountConnection) {
+                    if (autoMountCheck.shouldAutoMount) {
+                        // Show auto-mount prompt
+                        const shouldAutoMount = confirm(
+                            `Found saved connection "${autoMountCheck.connection.label}" with auto-mount enabled.\n\n` +
+                            `Would you like to mount it automatically?`
+                        );
+                        
+                        if (shouldAutoMount) {
+                            try {
+                                showLoading(true);
+                                mountButton.disabled = true;
+                                showMessage('Auto-mounting saved connection...', 'loading');
+                                
+                                const autoMountResult = await window.api.autoMountSavedConnection(sharePath, usernameInput.value.trim() || undefined);
+                                
+                                if (autoMountResult.success && autoMountResult.mounted) {
+                                    showMessage(autoMountResult.message, 'success');
+                                    // Close the window after successful auto-mount
+                                    setTimeout(() => {
+                                        window.close();
+                                    }, 2000);
+                                    return; // Exit early, no need to load credentials
+                                } else {
+                                    showMessage(autoMountResult.message, autoMountResult.success ? 'warning' : 'error');
+                                    // Fall through to load credentials for manual mount
+                                }
+                            } catch (autoMountError) {
+                                showMessage(`Auto-mount failed: ${autoMountError.message}`, 'error');
+                                // Fall through to load credentials for manual mount
+                            } finally {
+                                showLoading(false);
+                                mountButton.disabled = false;
+                            }
+                        }
+                    } else if (autoMountCheck.connection) {
+                        // Connection exists but auto-mount not applicable, show info and pre-fill
+                        showMessage(`Found saved connection "${autoMountCheck.connection.label}" (${autoMountCheck.reason})`, 'info');
+                        
+                        // Pre-fill the form with saved connection data
+                        usernameInput.value = autoMountCheck.connection.username;
+                        labelInput.value = autoMountCheck.connection.label;
+                        autoMountCheckbox.checked = autoMountCheck.connection.autoMount;
+                        saveCredentialsCheckbox.checked = true;
+                        
+                        // Try to load the password
+                        try {
+                            const credentials = await window.api.getConnectionCredentials(autoMountCheck.connection.id);
+                            if (credentials) {
+                                passwordInput.value = credentials.password;
+                            }
+                        } catch (credError) {
+                            // Password loading failed, user will need to enter it
+                        }
+                        
+                        // Auto-hide info message
+                        setTimeout(() => {
+                            if (statusMessage.classList.contains('info')) {
+                                statusMessage.style.display = 'none';
+                            }
+                        }, 4000);
+                        
+                        return; // Exit early, we've loaded the connection data
+                    }
+                }
+                
+                // Fallback: Try to load credentials using the legacy method
                 const credentials = await window.api.getStoredCredentials(sharePath);
                 if (credentials) {
                     usernameInput.value = credentials.username;
@@ -139,6 +209,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } catch (error) {
                 // Silently ignore credential loading errors
+                if (process.env.NODE_ENV === 'development') {
+                    console.error('Error checking for auto-mount or credentials:', error);
+                }
             }
         }
     });

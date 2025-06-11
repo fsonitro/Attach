@@ -345,6 +345,207 @@ export class MountCoordinator {
         }
     }
 
+    // **NEW: Check if share should be auto-mounted and offer automatic mounting**
+    async checkForAutoMountableConnection(sharePath: string, username?: string): Promise<{
+        hasAutoMountConnection: boolean;
+        connection?: SavedConnection;
+        shouldAutoMount: boolean;
+        canMount: boolean;
+        reason?: string;
+    }> {
+        try {
+            // Import connection store dynamically to avoid circular dependencies
+            const { connectionStore } = await import('./connectionStore');
+            
+            // Find connection by share path and username
+            const connection = connectionStore.findConnectionByShareAndUser(sharePath, username);
+            
+            if (!connection) {
+                return {
+                    hasAutoMountConnection: false,
+                    shouldAutoMount: false,
+                    canMount: false,
+                    reason: 'No saved connection found'
+                };
+            }
+
+            // Check if auto-mount is enabled for this connection
+            if (!connection.autoMount) {
+                return {
+                    hasAutoMountConnection: true,
+                    connection,
+                    shouldAutoMount: false,
+                    canMount: true,
+                    reason: 'Connection exists but auto-mount is disabled'
+                };
+            }
+
+            // Check if auto-mount is globally enabled
+            const autoMountEnabled = await connectionStore.getAutoMountEnabled();
+            if (!autoMountEnabled) {
+                return {
+                    hasAutoMountConnection: true,
+                    connection,
+                    shouldAutoMount: false,
+                    canMount: true,
+                    reason: 'Auto-mount is globally disabled'
+                };
+            }
+
+            // Check if connection is already mounted
+            if (this.isMountInProgress(connection)) {
+                return {
+                    hasAutoMountConnection: true,
+                    connection,
+                    shouldAutoMount: false,
+                    canMount: false,
+                    reason: 'Mount operation already in progress'
+                };
+            }
+
+            // Check if already mounted by checking app tracking or system mounts
+            try {
+                const { detectSystemSMBMounts } = await import('../mount/smbService');
+                const systemMounts = await detectSystemSMBMounts();
+                const normalizedSharePath = connection.sharePath.replace(/^smb:\/\//, '').replace(/^\/\//, '').toLowerCase();
+                
+                const isSystemMounted = systemMounts.some((mount: { serverPath: string; mountPoint: string; isAppManaged: boolean }) =>
+                    mount.serverPath.toLowerCase() === normalizedSharePath
+                );
+                
+                if (isSystemMounted) {
+                    return {
+                        hasAutoMountConnection: true,
+                        connection,
+                        shouldAutoMount: false,
+                        canMount: false,
+                        reason: 'Share is already mounted'
+                    };
+                }
+            } catch (error) {
+                // If we can't check system mounts, continue with auto-mount
+                if (process.env.NODE_ENV === 'development') {
+                    console.warn('Could not check system mounts, proceeding with auto-mount check');
+                }
+            }
+
+            // All checks passed - should auto-mount
+            return {
+                hasAutoMountConnection: true,
+                connection,
+                shouldAutoMount: true,
+                canMount: true,
+                reason: 'Ready for auto-mount'
+            };
+
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`Error checking for auto-mountable connection: ${error}`);
+            }
+            return {
+                hasAutoMountConnection: false,
+                shouldAutoMount: false,
+                canMount: false,
+                reason: `Error: ${error instanceof Error ? error.message : String(error)}`
+            };
+        }
+    }
+
+    // **NEW: Automatically mount a saved connection if it has auto-mount enabled**
+    async autoMountSavedConnection(sharePath: string, username?: string): Promise<{
+        success: boolean;
+        mounted: boolean;
+        connection?: SavedConnection;
+        mountPoint?: string;
+        message: string;
+    }> {
+        try {
+            const autoMountCheck = await this.checkForAutoMountableConnection(sharePath, username);
+            
+            if (!autoMountCheck.hasAutoMountConnection) {
+                return {
+                    success: false,
+                    mounted: false,
+                    message: 'No saved connection found for this share path'
+                };
+            }
+
+            if (!autoMountCheck.shouldAutoMount) {
+                return {
+                    success: true,
+                    mounted: false,
+                    connection: autoMountCheck.connection,
+                    message: autoMountCheck.reason || 'Connection found but auto-mount not applicable'
+                };
+            }
+
+            if (!autoMountCheck.connection) {
+                return {
+                    success: false,
+                    mounted: false,
+                    message: 'Connection data not available'
+                };
+            }
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🚀 Auto-mounting saved connection: ${autoMountCheck.connection.label}`);
+            }
+
+            // Import required services
+            const { mountSMBShare } = await import('../mount/smbService');
+            const { connectionStore } = await import('./connectionStore');
+
+            // Get password for the connection
+            const password = await connectionStore.getPassword(autoMountCheck.connection.id);
+            if (!password) {
+                return {
+                    success: false,
+                    mounted: false,
+                    connection: autoMountCheck.connection,
+                    message: 'No password found for this connection'
+                };
+            }
+
+            // Use coordinated mount to handle conflicts and prevent duplicates
+            const result = await this.coordinateMount(
+                autoMountCheck.connection,
+                'auto-mount-ui',
+                async () => {
+                    const mountPoint = await mountSMBShare(
+                        autoMountCheck.connection!.sharePath,
+                        autoMountCheck.connection!.username,
+                        password
+                    );
+
+                    // Update connection usage
+                    await connectionStore.updateConnectionUsage(autoMountCheck.connection!.id);
+
+                    return { mountPoint };
+                }
+            );
+
+            return {
+                success: true,
+                mounted: true,
+                connection: autoMountCheck.connection,
+                mountPoint: result.mountPoint,
+                message: `Successfully auto-mounted ${autoMountCheck.connection.label}`
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`❌ Auto-mount failed: ${errorMessage}`);
+            }
+            
+            return {
+                success: false,
+                mounted: false,
+                message: `Auto-mount failed: ${errorMessage}`
+            };
+        }
+    }
+
     // Queue a mount operation to be executed when no other operations are running
     async queueMount<T>(
         connection: SavedConnection,

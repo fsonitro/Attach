@@ -39,6 +39,12 @@ contextBridge.exposeInMainWorld('api', {
     updateAutoMountSettings: (settings: {autoMountEnabled?: boolean, rememberCredentials?: boolean}) =>
         ipcRenderer.invoke('update-auto-mount-settings', settings),
     
+    // Auto-mount enhancement
+    checkForAutoMountableConnection: (sharePath: string, username?: string) =>
+        ipcRenderer.invoke('check-for-auto-mountable-connection', sharePath, username),
+    autoMountSavedConnection: (sharePath: string, username?: string) =>
+        ipcRenderer.invoke('auto-mount-saved-connection', sharePath, username),
+    
     // Comprehensive settings operations
     openSettingsWindow: () =>
         ipcRenderer.invoke('open-settings-window'),
