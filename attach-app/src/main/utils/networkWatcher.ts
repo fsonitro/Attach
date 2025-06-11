@@ -18,6 +18,13 @@ import {
 
 const execPromise = promisify(exec);
 
+// Configuration constants
+const NETWORK_CONFIG = {
+    CHECK_INTERVAL: 5000,     // Check every 5 seconds for faster user feedback
+    TIMEOUT_MS: 1000,         // 1 second timeout for network commands
+    INTERNET_TIMEOUT_MS: 3000 // 3 seconds for internet connectivity check
+} as const;
+
 export interface NetworkStatus {
     isOnline: boolean;
     hasInternet: boolean;
@@ -26,14 +33,11 @@ export interface NetworkStatus {
 }
 
 export class NetworkWatcher extends EventEmitter {
-    private mountedShares: Map<string, MountedShare>;
-    private shareMonitoringService: ShareMonitoringService;
+    private readonly mountedShares: Map<string, MountedShare>;
+    private readonly shareMonitoringService: ShareMonitoringService;
     private networkCheckInterval: NodeJS.Timeout | null = null;
     private currentNetworkStatus: NetworkStatus;
     private previousNetworkStatus: NetworkStatus | null = null;
-    
-    // Minimal configuration with faster network status updates
-    private readonly NETWORK_CHECK_INTERVAL = 5000; // Check every 5 seconds for faster user feedback
 
     constructor(mountedSharesRef: Map<string, MountedShare>) {
         super();
@@ -64,7 +68,7 @@ export class NetworkWatcher extends EventEmitter {
         // Start periodic network monitoring with fast intervals for responsive UI
         this.networkCheckInterval = setInterval(() => {
             this.checkNetworkStatus();
-        }, this.NETWORK_CHECK_INTERVAL);
+        }, NETWORK_CONFIG.CHECK_INTERVAL);
 
         if (process.env.NODE_ENV === 'development') {
             console.log('✅ Minimal NetworkWatcher started');
@@ -132,7 +136,7 @@ export class NetworkWatcher extends EventEmitter {
     private async isNetworkOnline(): Promise<boolean> {
         try {
             // Ultra-fast ping with minimal timeout for quick status updates
-            await execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: 1000 });
+            await execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: NETWORK_CONFIG.TIMEOUT_MS });
             return true;
         } catch (error) {
             return false;
@@ -145,7 +149,7 @@ export class NetworkWatcher extends EventEmitter {
     private async hasInternetConnectivity(): Promise<boolean> {
         try {
             // Quick internet check with reduced timeout
-            await execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: 1500 });
+            await execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: NETWORK_CONFIG.INTERNET_TIMEOUT_MS });
             return true;
         } catch (error) {
             return false;
@@ -158,13 +162,13 @@ export class NetworkWatcher extends EventEmitter {
     private async getCurrentNetworkId(): Promise<string | null> {
         try {
             // Get current WiFi network name (SSID) on macOS with faster timeout
-            const result = await execPromise('networksetup -getairportnetwork en0', { timeout: 1000 });
+            const result = await execPromise('networksetup -getairportnetwork en0', { timeout: NETWORK_CONFIG.TIMEOUT_MS });
             const match = result.stdout.match(/Current Wi-Fi Network: (.+)/);
             return match ? match[1].trim() : null;
         } catch (error) {
             // Fall back to router/gateway IP as network identifier with faster timeout
             try {
-                const routeResult = await execPromise('route -n get default | grep gateway', { timeout: 1000 });
+                const routeResult = await execPromise('route -n get default | grep gateway', { timeout: NETWORK_CONFIG.TIMEOUT_MS });
                 const gatewayMatch = routeResult.stdout.match(/gateway: (.+)/);
                 return gatewayMatch ? gatewayMatch[1].trim() : null;
             } catch (fallbackError) {

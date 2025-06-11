@@ -2,10 +2,12 @@
 // Service for automatically mounting saved connections on app startup
 
 import { connectionStore, SavedConnection } from './connectionStore';
-import { mountSMBShare, detectMountConflict, cleanupStaleMounts } from '../mount/smbService';
+import { mountSMBShare, detectMountConflict, cleanupStaleMounts, detectSystemSMBMounts, safeEjectConflictingMount } from '../mount/smbService';
 import { MountedShare } from '../../types';
 import { notifyMountConflictsResolved } from './essentialNotifications';
+import { mountCoordinator } from './mountCoordinator';
 
+// Enhanced interfaces with better type safety
 export interface AutoMountResult {
     connection: SavedConnection;
     success: boolean;
@@ -15,34 +17,76 @@ export interface AutoMountResult {
     conflictErrors?: string[];
 }
 
+// Configuration constants
+const AUTO_MOUNT_CONFIG = {
+    CONFLICT_RESOLUTION_DELAY: 2000, // 2 seconds delay after cleanup
+    MAX_MOUNT_RETRIES: 3              // Maximum retries for mount conflicts
+} as const;
+
 export class AutoMountService {
-    private mountedShares: Map<string, MountedShare>;
+    private readonly mountedShares: Map<string, MountedShare>;
 
     constructor(mountedSharesRef: Map<string, MountedShare>) {
         this.mountedShares = mountedSharesRef;
     }
 
-    // Attempt to auto-mount all saved connections that have autoMount enabled
-    async autoMountConnections(): Promise<AutoMountResult[]> {
+    /**
+     * Attempt to auto-mount all saved connections that have autoMount enabled
+     */
+    async autoMountConnections(trigger: string = 'auto'): Promise<{
+        results: AutoMountResult[];
+        summary: {
+            totalAttempted: number;
+            successful: number;
+            failed: number;
+            totalConflictsResolved: number;
+            connectionsWithConflicts: string[];
+        };
+    }> {
         const autoMountConnections = await connectionStore.getAutoMountConnections();
         const results: AutoMountResult[] = [];
 
         if (process.env.NODE_ENV === 'development') {
-            console.log(`Starting auto-mount for ${autoMountConnections.length} connections...`);
+            console.log(`🚀 Starting enhanced auto-mount (trigger: ${trigger}) for ${autoMountConnections.length} connections...`);
         }
 
+        // Process connections sequentially to avoid resource conflicts
         for (const connection of autoMountConnections) {
-            const result = await this.mountConnection(connection);
+            const result = await this.mountConnectionWithCoordination(connection, trigger);
             results.push(result);
         }
 
-        return results;
+        if (process.env.NODE_ENV === 'development') {
+            const stats = mountCoordinator.getStats();
+            console.log(`📊 Mount coordinator stats: ${stats.activeOperations} active, ${stats.queuedOperations} queued`);
+        }
+
+        // Calculate summary statistics
+        const successful = results.filter(r => r.success).length;
+        const failed = results.length - successful;
+        const totalConflictsResolved = results.reduce((sum, r) => sum + (r.conflictsResolved || 0), 0);
+        const connectionsWithConflicts = results
+            .filter(r => (r.conflictsResolved || 0) > 0)
+            .map(r => r.connection.label);
+
+        return {
+            results,
+            summary: {
+                totalAttempted: results.length,
+                successful,
+                failed,
+                totalConflictsResolved,
+                connectionsWithConflicts
+            }
+        };
     }
 
-    // Mount a specific saved connection with conflict detection and resolution
-    async mountConnection(connection: SavedConnection): Promise<AutoMountResult> {
+    /**
+     * Mount a single connection with enhanced conflict resolution and coordination
+     */
+    private async mountConnectionWithCoordination(connection: SavedConnection, trigger: string): Promise<AutoMountResult> {
         try {
-            // Check if connection is already mounted by the app
+            // Check if connection is already mounted by the app (synchronous check)
             if (this.isConnectionMounted(connection)) {
                 if (process.env.NODE_ENV === 'development') {
                     console.log(`⚠️ Connection ${connection.label} is already mounted by the app, skipping`);
@@ -58,144 +102,193 @@ export class AutoMountService {
                 console.log(`Auto-mounting connection: ${connection.label} (${connection.sharePath})`);
             }
 
-            // **NEW: Check for system-wide mount conflicts (Finder/system mounts)**
-            const conflictCheck = await detectMountConflict(connection.sharePath);
-            let conflictsResolved = 0;
-            let conflictErrors: string[] = [];
+            // Use mount coordinator for enhanced conflict handling
+            return await mountCoordinator.coordinateMount(
+                connection,
+                trigger,
+                async () => {
+                    // **NEW: Check for system-wide mount conflicts (Finder/system mounts)**
+                    const conflictCheck = await detectMountConflict(connection.sharePath);
+                    let conflictsResolved = 0;
+                    let conflictErrors: string[] = [];
 
-            if (conflictCheck.hasConflict) {
-                if (process.env.NODE_ENV === 'development') {
-                    console.log(`🔍 Detected mount conflict for ${connection.label}, attempting to resolve...`);
-                }
-
-                // Try to clean up conflicting mounts
-                const cleanupResult = await cleanupStaleMounts(connection.sharePath);
-                conflictsResolved = cleanupResult.cleaned;
-                conflictErrors = cleanupResult.errors;
-
-                if (cleanupResult.errors.length > 0) {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.warn(`⚠️ Some conflicts could not be resolved for ${connection.label}:`, cleanupResult.errors);
-                    }
-                    // Don't fail the mount - try anyway as conflicts might be resolved
-                }
-
-                if (conflictsResolved > 0) {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log(`✅ Resolved ${conflictsResolved} mount conflicts for ${connection.label}`);
-                    }
-                    
-                    // Notify user about conflict resolution
-                    try {
-                        await notifyMountConflictsResolved(conflictsResolved);
-                    } catch (notifyError) {
-                        // Don't fail mount if notification fails
+                    if (conflictCheck.hasConflict) {
                         if (process.env.NODE_ENV === 'development') {
-                            console.warn('Failed to send conflict resolution notification:', notifyError);
+                            console.log(`🔍 Detected mount conflict for ${connection.label}, attempting to resolve...`);
+                        }
+
+                        // Try to clean up conflicting mounts
+                        const cleanupResult = await cleanupStaleMounts(connection.sharePath);
+                        conflictsResolved = cleanupResult.cleaned;
+                        conflictErrors = cleanupResult.errors;
+
+                        if (cleanupResult.errors.length > 0) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.warn(`⚠️ Some conflicts could not be resolved for ${connection.label}:`, cleanupResult.errors);
+                            }
+                            // Don't fail the mount - try anyway as conflicts might be resolved
+                        }
+
+                        if (conflictsResolved > 0) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`✅ Resolved ${conflictsResolved} mount conflicts for ${connection.label}`);
+                            }
+
+                            // Brief delay to let system settle after ejecting conflicting mounts
+                            await new Promise(resolve => setTimeout(resolve, AUTO_MOUNT_CONFIG.CONFLICT_RESOLUTION_DELAY));
                         }
                     }
+
+                    // Get password for the connection
+                    const password = await connectionStore.getPassword(connection.id);
+                    if (!password) {
+                        throw new Error('No password found for connection');
+                    }
+
+                    let mountPoint: string;
+                    try {
+                        mountPoint = await mountSMBShare(
+                            connection.sharePath,
+                            connection.username,
+                            password
+                        );
+                    } catch (mountError: any) {
+                        // **NEW: Handle specific mount conflict error (-1073741412)**
+                        if (mountError.isConflictError) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`🔧 Mount conflict error detected, performing aggressive cleanup and retry...`);
+                            }
+                            
+                            // Import aggressive cleanup function
+                            const { aggressiveConflictCleanup } = require('../mount/smbService');
+                            
+                            // Perform aggressive cleanup targeting Finder mounts
+                            const aggressiveCleanup = await aggressiveConflictCleanup(connection.sharePath);
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`🧹 Aggressive cleanup results: ${aggressiveCleanup.cleaned} cleaned, ${aggressiveCleanup.errors.length} errors`);
+                                if (aggressiveCleanup.foundFinderMounts) {
+                                    console.log(`🍎 Found and processed Finder mounts`);
+                                } else {
+                                    console.log(`ℹ️ No Finder mounts found - error may be due to filesystem conflicts`);
+                                }
+                                if (aggressiveCleanup.errors.length > 0) {
+                                    console.log(`⚠️ Cleanup errors:`, aggressiveCleanup.errors);
+                                }
+                            }
+                            
+                            // Update conflict tracking
+                            conflictsResolved += aggressiveCleanup.cleaned;
+                            conflictErrors.push(...aggressiveCleanup.errors);
+                            
+                            // Wait longer for system to settle after aggressive cleanup
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            
+                            // Retry mount once
+                            try {
+                                mountPoint = await mountSMBShare(
+                                    connection.sharePath,
+                                    connection.username,
+                                    password
+                                );
+                                if (process.env.NODE_ENV === 'development') {
+                                    console.log(`✅ Mount successful after aggressive cleanup retry (resolved ${conflictsResolved} total conflicts)`);
+                                }
+                                
+                                // Notify user about conflict resolution if we found and cleaned up mounts
+                                if (conflictsResolved > 0) {
+                                    try {
+                                        await notifyMountConflictsResolved(conflictsResolved);
+                                    } catch (notifyError) {
+                                        if (process.env.NODE_ENV === 'development') {
+                                            console.warn('Failed to send conflict resolution notification:', notifyError);
+                                        }
+                                    }
+                                }
+                            } catch (retryError) {
+                                if (process.env.NODE_ENV === 'development') {
+                                    console.error(`❌ Mount failed even after aggressive cleanup: ${retryError}`);
+                                }
+                                throw retryError;
+                            }
+                        } else {
+                            throw mountError;
+                        }
+                    }
+
+                    // Create mounted share entry
+                    const mountedShare: MountedShare = {
+                        label: connection.label,
+                        mountPoint,
+                        sharePath: connection.sharePath,
+                        username: connection.username,
+                        mountedAt: new Date()
+                    };
+
+                    // Add to mounted shares map
+                    this.mountedShares.set(connection.label, mountedShare);
+
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
+                    }
+
+                    // Send user notification if we resolved conflicts (don't duplicate with retry notifications)
+                    if (conflictsResolved > 0) {
+                        try {
+                            await notifyMountConflictsResolved(conflictsResolved);
+                        } catch (notifyError) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.warn('Failed to send conflict resolution notification:', notifyError);
+                            }
+                        }
+                    }
+
+                    return {
+                        connection,
+                        success: true,
+                        mountPoint,
+                        conflictsResolved: conflictsResolved || undefined,
+                        conflictErrors: conflictErrors.length > 0 ? conflictErrors : undefined
+                    };
                 }
-            }
-
-            // Get password from keychain
-            const password = await connectionStore.getPassword(connection.id);
-            if (!password) {
-                throw new Error('Password not found in keychain');
-            }
-
-            // Attempt to mount (with a small delay if conflicts were resolved)
-            if (conflictsResolved > 0) {
-                // Brief delay to let system settle after ejecting conflicting mounts
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-
-            const mountPoint = await mountSMBShare(
-                connection.sharePath,
-                connection.username,
-                password
             );
-
-            // Create mounted share entry
-            const mountedShare: MountedShare = {
-                label: connection.label,
-                mountPoint,
-                sharePath: connection.sharePath,
-                username: connection.username,
-                mountedAt: new Date()
-            };
-
-            // Add to mounted shares map
-            this.mountedShares.set(connection.label, mountedShare);
-
-            // Update connection usage
-            connectionStore.updateConnectionUsage(connection.id);
-
+        } catch (error: any) {
             if (process.env.NODE_ENV === 'development') {
-                console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
-                if (conflictsResolved > 0) {
-                    console.log(`   (Resolved ${conflictsResolved} conflicts during mount)`);
-                }
+                console.error(`❌ Auto-mount failed for ${connection.label}:`, error.message);
             }
-
-            return {
-                connection,
-                success: true,
-                mountPoint,
-                conflictsResolved,
-                conflictErrors: conflictErrors.length > 0 ? conflictErrors : undefined
-            };
-
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (process.env.NODE_ENV === 'development') {
-                console.error(`❌ Failed to auto-mount ${connection.label}: ${errorMessage}`);
-            }
-
             return {
                 connection,
                 success: false,
-                error: errorMessage
+                error: error.message
             };
         }
     }
 
-    // Get summary of auto-mount results with conflict resolution info
-    getAutoMountSummary(results: AutoMountResult[]): {
-        total: number;
-        successful: number;
-        failed: number;
-        successfulConnections: string[];
-        failedConnections: Array<{name: string, error: string}>;
-        totalConflictsResolved: number;
-        connectionsWithConflicts: string[];
-    } {
-        const successful = results.filter(r => r.success);
-        const failed = results.filter(r => !r.success);
-        const totalConflictsResolved = results.reduce((sum, r) => sum + (r.conflictsResolved || 0), 0);
-        const connectionsWithConflicts = results
-            .filter(r => r.conflictsResolved && r.conflictsResolved > 0)
-            .map(r => r.connection.label);
-
-        return {
-            total: results.length,
-            successful: successful.length,
-            failed: failed.length,
-            successfulConnections: successful.map(r => r.connection.label),
-            failedConnections: failed.map(r => ({
-                name: r.connection.label,
-                error: r.error || 'Unknown error'
-            })),
-            totalConflictsResolved,
-            connectionsWithConflicts
-        };
+    // Check if a connection is currently mounted (synchronous - checks only app tracking)
+    isConnectionMounted(connection: SavedConnection): boolean {
+        return this.mountedShares.has(connection.label);
     }
 
-    // Check if a connection is currently mounted
-    isConnectionMounted(connection: SavedConnection): boolean {
-        return Array.from(this.mountedShares.values()).some(
-            share => share.sharePath === connection.sharePath && 
-                     share.username === connection.username
-        );
+    // Enhanced version that checks both app tracking and actual system mounts
+    async isConnectionMountedEnhanced(connection: SavedConnection): Promise<boolean> {
+        // First check app tracking
+        if (this.isConnectionMounted(connection)) {
+            return true;
+        }
+
+        // Then check system mounts
+        try {
+            const systemMounts = await detectSystemSMBMounts();
+            const normalizedSharePath = connection.sharePath.replace(/^smb:\/\//, '').replace(/^\/\//, '').toLowerCase();
+            const hasSystemMount = systemMounts.some((mount: { serverPath: string; mountPoint: string; isAppManaged: boolean }) =>
+                mount.serverPath.toLowerCase() === normalizedSharePath
+            );
+            return hasSystemMount;
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.warn(`Error checking system mounts for ${connection.label}:`, error);
+            }
+            return false;
+        }
     }
 
     // Clean up all stale mounts system-wide (useful for app startup and manual cleanup)
@@ -213,8 +306,6 @@ export class AutoMountService {
                 console.log('🧹 Starting system-wide stale mount cleanup...');
             }
 
-            // Import the detection function
-            const { detectSystemSMBMounts, safeEjectConflictingMount } = require('../mount/smbService');
             const systemMounts = await detectSystemSMBMounts();
 
             for (const mount of systemMounts) {
@@ -262,34 +353,43 @@ export class AutoMountService {
     async remountConnection(connectionId: string): Promise<AutoMountResult | null> {
         const connection = await connectionStore.getConnection(connectionId);
         if (!connection) {
-            if (process.env.NODE_ENV === 'development') {
-                console.error(`Connection not found: ${connectionId}`);
-            }
             return null;
         }
 
-        // Check if already mounted
-        if (this.isConnectionMounted(connection)) {
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`Connection ${connection.label} is already mounted`);
-            }
-            return {
-                connection,
-                success: true,
-                mountPoint: this.getMountPointForConnection(connection)
-            };
+        // Only remount if it's not currently mounted
+        if (!this.isConnectionMounted(connection)) {
+            const result = await this.mountConnectionWithCoordination(connection, 'remount');
+            return result;
         }
 
-        return await this.mountConnection(connection);
+        return {
+            connection,
+            success: true,
+            mountPoint: this.getMountPointForConnection(connection)
+        };
     }
 
     // Get mount point for a connection if it's currently mounted
-    private getMountPointForConnection(connection: SavedConnection): string | undefined {
-        const mountedShare = Array.from(this.mountedShares.values()).find(
-            share => share.sharePath === connection.sharePath && 
-                     share.username === connection.username
-        );
+    getMountPointForConnection(connection: SavedConnection): string | undefined {
+        const mountedShare = this.mountedShares.get(connection.label);
         return mountedShare?.mountPoint;
+    }
+
+    // Get summary statistics for auto-mount operations
+    getAutoMountSummary(): {
+        totalMounted: number;
+        mountedConnections: Array<{ label: string; mountPoint: string; mountedAt: Date }>;
+    } {
+        const mountedConnections = Array.from(this.mountedShares.values()).map(share => ({
+            label: share.label,
+            mountPoint: share.mountPoint,
+            mountedAt: share.mountedAt
+        }));
+
+        return {
+            totalMounted: this.mountedShares.size,
+            mountedConnections
+        };
     }
 }
 

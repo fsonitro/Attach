@@ -3,10 +3,26 @@
 
 import { Notification } from 'electron';
 
+// Configuration constants
+const NOTIFICATION_CONFIG = {
+    COOLDOWN_MS: 10000,  // 10 seconds between notifications
+    DEFAULT_TIMEOUT: 'default' as const
+} as const;
+
+// Notification types for better type safety
+type NotificationUrgency = 'low' | 'normal' | 'critical';
+type NotificationTimeoutType = 'default' | 'never';
+
+interface NotificationOptions {
+    title: string;
+    body: string;
+    urgency?: NotificationUrgency;
+    timeoutType?: NotificationTimeoutType;
+}
+
 class EssentialNotificationManager {
     private static instance: EssentialNotificationManager;
     private lastNotificationTime = 0;
-    private readonly NOTIFICATION_COOLDOWN = 10000; // 10 seconds between notifications
     
     private constructor() {}
     
@@ -18,12 +34,13 @@ class EssentialNotificationManager {
     }
     
     /**
-     * Show a simple notification with cooldown to prevent spam
+     * Show a notification with cooldown to prevent spam
      */
-    private async showNotification(title: string, body: string, urgency: 'low' | 'normal' | 'critical' = 'normal'): Promise<void> {
-        // Prevent spam with cooldown
+    private async showNotification(options: NotificationOptions): Promise<void> {
+        const { title, body, urgency = 'normal', timeoutType = 'default' } = options;
         const now = Date.now();
-        if (now - this.lastNotificationTime < this.NOTIFICATION_COOLDOWN) {
+        
+        if (now - this.lastNotificationTime < NOTIFICATION_CONFIG.COOLDOWN_MS) {
             if (process.env.NODE_ENV === 'development') {
                 console.log(`Notification skipped (cooldown): ${title}`);
             }
@@ -37,13 +54,13 @@ class EssentialNotificationManager {
                 title,
                 body,
                 urgency,
-                timeoutType: 'default'
+                timeoutType
             });
             
             notification.show();
             
             if (process.env.NODE_ENV === 'development') {
-                console.log(`📱 Essential notification: ${title}`);
+                console.log(`📱 Notification: ${title} - ${body}`);
             }
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
@@ -52,91 +69,92 @@ class EssentialNotificationManager {
         }
     }
     
-    /**
-     * Critical: Network/WiFi disconnected
-     */
     async notifyNetworkDisconnected(): Promise<void> {
-        await this.showNotification(
-            'Network Disconnected',
-            'WiFi connection lost. Network shares may become unavailable.',
-            'critical'
-        );
+        await this.showNotification({
+            title: 'Network Disconnected',
+            body: 'Network connection lost. Auto-mount will retry when connection is restored.',
+            urgency: 'critical'
+        });
     }
     
-    /**
-     * Good news: Network/WiFi reconnected
-     */
     async notifyNetworkReconnected(): Promise<void> {
-        await this.showNotification(
-            'Network Reconnected',
-            'WiFi connection restored. Checking network shares...',
-            'normal'
-        );
+        await this.showNotification({
+            title: 'Network Reconnected',
+            body: 'Network connection restored. Checking network shares...',
+            urgency: 'normal'
+        });
     }
     
-    /**
-     * Critical: Internet connectivity lost (but WiFi still connected)
-     */
     async notifyInternetLost(): Promise<void> {
-        await this.showNotification(
-            'Internet Connection Lost',
-            'WiFi connected but no internet access. Some network shares may be affected.',
-            'critical'
-        );
+        await this.showNotification({
+            title: 'Internet Connection Lost',
+            body: 'Internet access unavailable. Local network shares may still work.',
+            urgency: 'critical'
+        });
     }
     
-    /**
-     * Good news: Internet connectivity restored
-     */
     async notifyInternetRestored(): Promise<void> {
-        await this.showNotification(
-            'Internet Access Restored',
-            'Full network connectivity restored.',
-            'normal'
-        );
+        await this.showNotification({
+            title: 'Internet Connection Restored',
+            body: 'Internet access is back. Reconnecting network shares...',
+            urgency: 'normal'
+        });
     }
     
-    /**
-     * Warning: Network changed (different WiFi network)
-     */
     async notifyNetworkChanged(): Promise<void> {
-        await this.showNotification(
-            'Network Changed',
-            'Connected to a different network. Network shares may need to be remounted.',
-            'normal'
-        );
+        await this.showNotification({
+            title: 'Network Changed',
+            body: 'Network configuration changed. Reconnecting shares...',
+            urgency: 'normal'
+        });
     }
     
-    /**
-     * Critical: All shares were disconnected due to network issues
-     */
     async notifySharesDisconnected(count: number): Promise<void> {
-        await this.showNotification(
-            'Network Shares Disconnected',
-            `${count} network share${count > 1 ? 's' : ''} disconnected due to network issues.`,
-            'critical'
-        );
+        await this.showNotification({
+            title: 'Network Shares Disconnected',
+            body: `${count} network share${count > 1 ? 's' : ''} disconnected due to network issues.`,
+            urgency: 'critical'
+        });
+    }
+
+    async notifySharesReconnected(count: number): Promise<void> {
+        await this.showNotification({
+            title: 'Network Shares Reconnected',
+            body: `${count} network share${count > 1 ? 's' : ''} successfully reconnected.`,
+            urgency: 'normal'
+        });
+    }
+
+    async notifyMountConflictsResolved(count: number): Promise<void> {
+        await this.showNotification({
+            title: 'Mount Conflicts Resolved',
+            body: `Resolved ${count} conflicting mount${count > 1 ? 's' : ''} for auto-mount.`,
+            urgency: 'normal'
+        });
     }
 
     /**
-     * Info: Mount conflicts resolved during auto-mount
+     * Specific notification for Finder mount conflicts (when WiFi reconnects)
      */
-    async notifyMountConflictsResolved(count: number): Promise<void> {
-        await this.showNotification(
-            'Mount Conflicts Resolved',
-            `Resolved ${count} conflicting mount${count > 1 ? 's' : ''} for auto-mount.`,
-            'normal'
-        );
+    async notifyFinderConflictsResolved(count: number): Promise<void> {
+        await this.showNotification({
+            title: 'Finder Mount Conflicts Resolved',
+            body: `Cleared ${count} stale Finder mount${count > 1 ? 's' : ''} that were blocking reconnection.`,
+            urgency: 'normal'
+        });
     }
 }
 
-// Export singleton and convenience functions
+// Export singleton instance
 export const essentialNotifications = EssentialNotificationManager.getInstance();
 
+// Export convenience functions
 export const notifyNetworkDisconnected = () => essentialNotifications.notifyNetworkDisconnected();
 export const notifyNetworkReconnected = () => essentialNotifications.notifyNetworkReconnected(); 
 export const notifyInternetLost = () => essentialNotifications.notifyInternetLost();
 export const notifyInternetRestored = () => essentialNotifications.notifyInternetRestored();
 export const notifyNetworkChanged = () => essentialNotifications.notifyNetworkChanged();
 export const notifySharesDisconnected = (count: number) => essentialNotifications.notifySharesDisconnected(count);
+export const notifySharesReconnected = (count: number) => essentialNotifications.notifySharesReconnected(count);
 export const notifyMountConflictsResolved = (count: number) => essentialNotifications.notifyMountConflictsResolved(count);
+export const notifyFinderConflictsResolved = (count: number) => essentialNotifications.notifyFinderConflictsResolved(count);

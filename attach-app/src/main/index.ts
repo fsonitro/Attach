@@ -1,6 +1,6 @@
 // Main entry point for the Electron application - handles app lifecycle and IPC communication
 
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, powerMonitor } from 'electron';
 import path from 'path';
 import os from 'os';
 import { createTray, updateTrayMenu, updateTrayNetworkStatus } from './tray';
@@ -19,6 +19,10 @@ let shareValidationInterval: NodeJS.Timeout | null = null;
 let autoMountService: AutoMountService | null = null;
 let networkWatcher: NetworkWatcher | null = null;
 let isQuitting = false;
+
+// **NEW: Global auto-mount operation lock to prevent race conditions**
+let isAutoMountInProgress = false;
+let pendingAutoMountTriggers: Set<'startup' | 'network' | 'wake' | 'manual'> = new Set();
 
 // Function to validate and refresh mounted shares
 async function refreshMountedShares() {
@@ -143,6 +147,9 @@ app.whenReady().then(async () => {
         await networkWatcher.start();
     }
     
+    // **NEW: Set up system power monitoring for sleep/wake detection**
+    setupPowerMonitoring();
+    
     // Start periodic validation of mounted shares (every 30 seconds)
     shareValidationInterval = setInterval(refreshMountedShares, 30000);
     
@@ -174,46 +181,8 @@ app.whenReady().then(async () => {
         }
     }
     
-    // Perform auto-mounting of saved connections
-    if (await connectionStore.getAutoMountEnabled()) {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Starting auto-mount process...');
-        }
-        try {
-            const autoMountResults = await autoMountService.autoMountConnections();
-            const summary = autoMountService.getAutoMountSummary(autoMountResults);
-            
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`Auto-mount completed: ${summary.successful}/${summary.total} successful`);
-                
-                if (summary.successful > 0) {
-                    console.log(`✅ Successfully mounted: ${summary.successfulConnections.join(', ')}`);
-                }
-                
-                if (summary.failed > 0) {
-                    console.log(`❌ Failed to mount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
-                }
-                
-                // **NEW: Log conflict resolution info**
-                if (summary.totalConflictsResolved > 0) {
-                    console.log(`🔧 Resolved ${summary.totalConflictsResolved} mount conflicts for: ${summary.connectionsWithConflicts.join(', ')}`);
-                }
-            }
-            
-            if (summary.successful > 0) {
-                // Update tray menu with new mounts
-                updateTrayMenu(mountedShares);
-            }
-        } catch (error) {
-            if (process.env.NODE_ENV === 'development') {
-                console.error('Error during auto-mount process:', error);
-            }
-        }
-    } else {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Auto-mount is disabled');
-        }
-    }
+    // Perform enhanced auto-mounting of saved connections
+    await handleEnhancedAutoMount('startup');
     
     if (process.env.NODE_ENV === 'development') {
         console.log('Attach app is ready!');
@@ -250,46 +219,185 @@ async function attemptShareReconnection(folderPath: string, shareName: string): 
     }
 }
 
-// Function to handle auto-mount when network reconnects
-async function handleNetworkReconnectionAutoMount(): Promise<void> {
-    if (!autoMountService) {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Auto-mount service not available for network reconnection');
-        }
-        return;
+// **NEW: Enhanced power monitoring for sleep/wake detection and system event handling**
+function setupPowerMonitoring(): void {
+    if (process.env.NODE_ENV === 'development') {
+        console.log('🔌 Setting up power monitoring for sleep/wake detection...');
     }
 
-    // Check if auto-mount is enabled
-    const autoMountEnabled = await connectionStore.getAutoMountEnabled();
-    if (!autoMountEnabled) {
+    // System sleep detection
+    powerMonitor.on('suspend', async () => {
         if (process.env.NODE_ENV === 'development') {
-            console.log('Auto-mount is disabled, skipping network reconnection auto-mount');
+            console.log('💤 System going to sleep - preparing shares for disconnection');
         }
-        return;
-    }
+        
+        // Gracefully disconnect shares before sleep to prevent hanging
+        if (mountedShares.size > 0) {
+            const shareLabels = Array.from(mountedShares.keys());
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`💤 Disconnecting ${shareLabels.length} shares before sleep`);
+            }                // Add disconnected shares to retry queue for wake reconnection
+                for (const [label, share] of mountedShares.entries()) {
+                    try {
+                        // Find the connection for this share to add to retry queue
+                        const connections = await connectionStore.getAutoMountConnections();
+                        const connection = connections.find((c: SavedConnection) => 
+                            c.sharePath === share.sharePath && 
+                            c.username === share.username && 
+                            c.autoMount
+                        );
+                    
+                    if (connection && networkWatcher) {
+                        networkWatcher.getShareMonitoringService().addToRetryQueue(connection);
+                    }
+                    
+                    // Safely unmount
+                    await unmountSMBShare(share.mountPoint);
+                    mountedShares.delete(label);
+                } catch (error) {
+                    // Force remove from tracking even if unmount fails
+                    mountedShares.delete(label);
+                    if (process.env.NODE_ENV === 'development') {
+                        console.warn(`Failed to unmount ${label} before sleep:`, error);
+                    }
+                }
+            }
+            
+            updateTrayMenu(mountedShares);
+        }
+    });
+
+    // System wake detection
+    powerMonitor.on('resume', async () => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🌅 System waking up - initiating auto-mount recovery');
+        }
+        
+        // Wait a bit for network to stabilize
+        setTimeout(async () => {
+            try {
+                // Force network status refresh
+                if (networkWatcher) {
+                    await networkWatcher.refreshNetworkStatus();
+                    
+                    // Trigger auto-mount for shares that should be reconnected
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🔄 Triggering post-wake auto-mount...');
+                    }
+                    await handleNetworkReconnectionAutoMount();
+                }
+            } catch (error) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.error('Error during post-wake auto-mount:', error);
+                }
+            }
+        }, 3000); // 3 second delay for network stabilization
+    });
+
+    // System lock/unlock detection (macOS specific)
+    powerMonitor.on('lock-screen', () => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🔒 Screen locked');
+        }
+    });
+
+    powerMonitor.on('unlock-screen', async () => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🔓 Screen unlocked - checking network shares');
+        }
+        
+        // Quick network check and potential auto-mount after unlock
+        setTimeout(async () => {
+            if (networkWatcher) {
+                const status = await networkWatcher.refreshNetworkStatus();
+                if (status.isOnline && status.hasInternet) {
+                    await handleNetworkReconnectionAutoMount();
+                }
+            }
+        }, 1000);
+    });
 
     if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 Network reconnected, attempting auto-mount of saved connections...');
+        console.log('✅ Power monitoring setup complete');
+    }
+}
+
+// **NEW: Enhanced auto-mount with intelligent scheduling and retry logic**
+async function handleEnhancedAutoMount(trigger: 'startup' | 'network' | 'wake' | 'manual' = 'manual'): Promise<void> {
+    // **NEW: Check if auto-mount is already in progress**
+    if (isAutoMountInProgress) {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`⏳ Auto-mount already in progress, queuing trigger: ${trigger}`);
+        }
+        pendingAutoMountTriggers.add(trigger);
+        return;
     }
 
+    // **NEW: Set global lock**
+    isAutoMountInProgress = true;
+    
     try {
-        const autoMountResults = await autoMountService.autoMountConnections();
-        const summary = autoMountService.getAutoMountSummary(autoMountResults);
+        if (!autoMountService) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Auto-mount service not available');
+            }
+            return;
+        }
+
+        // Check if auto-mount is enabled
+        const autoMountEnabled = await connectionStore.getAutoMountEnabled();
+        if (!autoMountEnabled) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Auto-mount is disabled, skipping ${trigger} auto-mount`);
+            }
+            return;
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🚀 Starting enhanced auto-mount (trigger: ${trigger})`);
+        }
+
+        // Clean up any stale mounts first (except on manual trigger)
+        if (trigger !== 'manual') {
+            const systemCleanup = await autoMountService.cleanupAllStaleMounts();
+            if (systemCleanup.totalCleaned > 0 && process.env.NODE_ENV === 'development') {
+                console.log(`🧹 Cleaned up ${systemCleanup.totalCleaned} stale mounts before auto-mount`);
+            }
+        }
+
+        // Perform auto-mount
+        const autoMountResult = await autoMountService.autoMountConnections(trigger);
+        const { results: autoMountResults, summary } = autoMountResult;
         
         if (process.env.NODE_ENV === 'development') {
-            console.log(`Network reconnection auto-mount completed: ${summary.successful}/${summary.total} successful`);
+            console.log(`📊 Enhanced auto-mount completed (${trigger}): ${summary.successful}/${summary.totalAttempted} successful`);
             
             if (summary.successful > 0) {
-                console.log(`✅ Successfully remounted: ${summary.successfulConnections.join(', ')}`);
+                const successfulConnections = autoMountResults.filter(r => r.success).map(r => r.connection.label);
+                console.log(`✅ Successfully mounted: ${successfulConnections.join(', ')}`);
             }
             
             if (summary.failed > 0) {
-                console.log(`❌ Failed to remount: ${summary.failedConnections.map(f => `${f.name} (${f.error})`).join(', ')}`);
+                const failedConnections = autoMountResults.filter(r => !r.success);
+                console.log(`❌ Failed to mount: ${failedConnections.map(f => `${f.connection.label} (${f.error})`).join(', ')}`);
+                
+                // Add failed connections to retry queue for later attempts
+                if (networkWatcher) {
+                    const connections = await connectionStore.getAutoMountConnections();
+                    for (const failedResult of failedConnections) {
+                        const connection = connections.find((c: SavedConnection) => c.id === failedResult.connection.id);
+                        if (connection && connection.autoMount) {
+                            networkWatcher.getShareMonitoringService().addToRetryQueue(connection);
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`📋 Added ${connection.label} to retry queue for later reconnection`);
+                            }
+                        }
+                    }
+                }
             }
             
-            // **NEW: Log conflict resolution info for network reconnection**
             if (summary.totalConflictsResolved > 0) {
-                console.log(`🔧 Network reconnection resolved ${summary.totalConflictsResolved} mount conflicts for: ${summary.connectionsWithConflicts.join(', ')}`);
+                console.log(`🔧 Resolved ${summary.totalConflictsResolved} mount conflicts for: ${summary.connectionsWithConflicts.join(', ')}`);
             }
         }
         
@@ -297,11 +405,35 @@ async function handleNetworkReconnectionAutoMount(): Promise<void> {
             // Update tray menu with new mounts
             updateTrayMenu(mountedShares);
         }
+        
     } catch (error) {
         if (process.env.NODE_ENV === 'development') {
-            console.error('Error during network reconnection auto-mount:', error);
+            console.error(`Error during enhanced auto-mount (${trigger}):`, error);
+        }
+    } finally {
+        // **NEW: Release global lock and process pending triggers**
+        isAutoMountInProgress = false;
+        
+        // Process any pending triggers that came in while we were running
+        if (pendingAutoMountTriggers.size > 0) {
+            const nextTrigger = Array.from(pendingAutoMountTriggers)[0];
+            pendingAutoMountTriggers.clear();
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔄 Processing pending auto-mount trigger: ${nextTrigger}`);
+            }
+            
+            // Small delay to prevent tight loop
+            setTimeout(() => {
+                handleEnhancedAutoMount(nextTrigger);
+            }, 1000);
         }
     }
+}
+
+// **UPDATED: Enhanced network reconnection auto-mount with retry logic**
+async function handleNetworkReconnectionAutoMount(): Promise<void> {
+    await handleEnhancedAutoMount('network');
 }
 
 // Setup IPC handlers for communication with renderer processes

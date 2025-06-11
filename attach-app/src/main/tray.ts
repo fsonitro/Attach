@@ -96,14 +96,14 @@ function getNetworkStatusLabel(): string {
  */
 function getOpenFolderLabel(): string {
     if (mountedShares.size === 0) {
-        return '📁 Open Folder (No shares mounted)';
+        return 'Open Folder (No shares mounted)';
     }
     
     if (!currentNetworkStatus || !currentNetworkStatus.isOnline) {
-        return '📁 Open Folder (Network offline - Read Only)';
+        return 'Open Folder (Network offline - Read Only)';
     }
     
-    return '📁 Open Folder';
+    return 'Open Folder';
 }
 
 /**

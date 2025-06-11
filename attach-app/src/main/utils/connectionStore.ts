@@ -4,14 +4,22 @@
 import keytar from 'keytar';
 import Store from 'electron-store';
 
+// Enhanced interfaces with better type safety
 export interface SavedConnection {
-    id: string;
+    readonly id: string;
     label: string;
     sharePath: string;
     username: string;
     autoMount: boolean;
     lastUsed: Date;
-    createdAt: Date;
+    readonly createdAt: Date;
+}
+
+export interface NetworkWatcherSettings {
+    enabled: boolean;
+    checkInterval: number; // seconds
+    retryAttempts: number;
+    retryDelay: number; // seconds
 }
 
 export interface ConnectionSettings {
@@ -20,16 +28,22 @@ export interface ConnectionSettings {
     autoMountEnabled: boolean;
     rememberCredentials: boolean;
     startAtLogin: boolean;
-    networkWatcher: {
-        enabled: boolean;
-        checkInterval: number; // seconds
-        retryAttempts: number;
-        retryDelay: number; // seconds
-    };
+    networkWatcher: NetworkWatcherSettings;
     mountLocation: string; // Default mount location
 }
 
-const KEYCHAIN_SERVICE = 'Attach';
+// Configuration constants
+const CONNECTION_CONFIG = {
+    SERVICE_NAME: 'Attach',
+    MAX_RECENT_CONNECTIONS: 10,
+    DEFAULT_MOUNT_LOCATION: `${process.env.HOME}/mounts`,
+    DEFAULT_NETWORK_WATCHER: {
+        enabled: true,
+        checkInterval: 15,
+        retryAttempts: 5,
+        retryDelay: 2
+    }
+} as const;
 
 class ConnectionStore {
     private store: Store<ConnectionSettings>;
@@ -42,13 +56,8 @@ class ConnectionStore {
                 autoMountEnabled: true,
                 rememberCredentials: true,
                 startAtLogin: false,
-                networkWatcher: {
-                    enabled: true,
-                    checkInterval: 15,
-                    retryAttempts: 5,
-                    retryDelay: 2
-                },
-                mountLocation: `${process.env.HOME}/mounts`
+                networkWatcher: CONNECTION_CONFIG.DEFAULT_NETWORK_WATCHER,
+                mountLocation: CONNECTION_CONFIG.DEFAULT_MOUNT_LOCATION
             },
             name: 'connections',
             // Enable encryption for sensitive data
@@ -191,7 +200,7 @@ class ConnectionStore {
     // Get stored password for a connection
     async getPassword(connectionId: string): Promise<string | null> {
         try {
-            return await keytar.getPassword(KEYCHAIN_SERVICE, connectionId);
+            return await keytar.getPassword(CONNECTION_CONFIG.SERVICE_NAME, connectionId);
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
                 console.error(`Failed to retrieve password for connection ${connectionId}:`, error);
@@ -207,7 +216,7 @@ class ConnectionStore {
         }
         
         try {
-            await keytar.setPassword(KEYCHAIN_SERVICE, connectionId, password);
+            await keytar.setPassword(CONNECTION_CONFIG.SERVICE_NAME, connectionId, password);
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
                 console.error(`Failed to store password for connection ${connectionId}:`, error);
@@ -219,7 +228,7 @@ class ConnectionStore {
     // Remove password for a connection
     private async removePassword(connectionId: string): Promise<void> {
         try {
-            await keytar.deletePassword(KEYCHAIN_SERVICE, connectionId);
+            await keytar.deletePassword(CONNECTION_CONFIG.SERVICE_NAME, connectionId);
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
                 console.warn(`Failed to remove password for connection ${connectionId}:`, error);
@@ -241,8 +250,8 @@ class ConnectionStore {
         // Add to front of list
         recentConnections.unshift(connectionId);
 
-        // Keep only last 20 items
-        recentConnections = recentConnections.slice(0, 20);
+        // Keep only configured maximum items
+        recentConnections = recentConnections.slice(0, CONNECTION_CONFIG.MAX_RECENT_CONNECTIONS);
 
         this.store.set('recentConnections', recentConnections);
     }

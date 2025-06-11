@@ -3,8 +3,19 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as keytar from 'keytar';
+import * as os from 'os';
 
 const execPromise = promisify(exec);
+
+// Helper function to get current username dynamically
+function getCurrentUsername(): string {
+    try {
+        return os.userInfo().username;
+    } catch (error) {
+        // Fallback to environment variable if os.userInfo() fails
+        return process.env.USER || process.env.USERNAME || 'user';
+    }
+}
 
 // Function to list available shares on a server (for validation and case correction)
 export const listSMBShares = async (serverName: string, username?: string, password?: string): Promise<string[]> => {
@@ -115,17 +126,14 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     }
     
     const connectivityCheck = await checkServerConnectivity(serverName, 5000);
-    if (!connectivityCheck.accessible) {
+    const isServerUnreachable = !connectivityCheck.accessible;
+    
+    if (isServerUnreachable) {
         if (process.env.NODE_ENV === 'development') {
-            console.log(`Server ${serverName} not reachable via ping/DNS, but attempting SMB connection anyway`);
+            console.log(`Server ${serverName} not reachable via standard checks`);
             console.log(`Reason: ${connectivityCheck.error}`);
+            console.log(`Proceeding with SMB mount attempt anyway (SMB has its own name resolution)`);
         }
-        // Simplified: Log connectivity issues without notifications
-        if (process.env.NODE_ENV === 'development') {
-            console.log(`Server unreachable: ${serverName}`);
-        }
-        // Don't block the mount - SMB has its own name resolution mechanisms
-        // Just log the issue for debugging
     } else {
         if (process.env.NODE_ENV === 'development') {
             console.log(`Server ${serverName} is reachable, proceeding with mount`);
@@ -154,14 +162,55 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     // Use user's home directory instead of /Volumes/ to avoid sudo requirements
     const mountPoint = `${process.env.HOME}/mounts/${mountLabel}`;
     
-    // Create mount point directory (no sudo needed in user's home)
+    // **ENHANCED: Create mount point directory with conflict detection**
     if (process.env.NODE_ENV === 'development') {
         console.log(`Creating mount point: ${mountPoint}`);
     }
+    
     try {
+        // First check if mount point already exists
+        try {
+            await execPromise(`test -d "${mountPoint}"`, { timeout: 3000 });
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`⚠️ Mount point already exists: ${mountPoint}`);
+            }
+            
+            // Check if it's already a mount point
+            const isAlreadyMounted = await isMountPoint(mountPoint);
+            if (isAlreadyMounted) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔍 Mount point is already mounted, trying to unmount: ${mountPoint}`);
+                }
+                try {
+                    await execPromise(`umount -f "${mountPoint}"`, { timeout: 5000 });
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`✅ Successfully unmounted existing mount: ${mountPoint}`);
+                    }
+                } catch (unmountError) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`⚠️ Failed to unmount existing mount: ${mountPoint}`);
+                    }
+                }
+            }
+            
+            // Try to remove the directory and recreate it
+            try {
+                await execPromise(`rmdir "${mountPoint}" 2>/dev/null || true`, { timeout: 3000 });
+            } catch (rmdirError) {
+                // Ignore rmdir errors
+            }
+        } catch (testError) {
+            // Directory doesn't exist, which is good
+        }
+        
+        // Create the mount point directory
         await execPromise(`mkdir -p "${mountPoint}"`, { timeout: 10000 });
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Mount point created: ${mountPoint}`);
+        }
     } catch (error) {
-        throw new Error(`Failed to create mount point: ${mountPoint}`);
+        throw new Error(`Failed to create mount point: ${mountPoint} - ${error}`);
     }
     
     // Build the mount command with proper URL encoding for special characters
@@ -214,6 +263,27 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
             console.error(`Sanitized error:`, sanitizedErrorMessage);
             if (sanitizedStderr) {
                 console.error(`Sanitized stderr:`, sanitizedStderr);
+            }
+        }
+        
+        // **FIXED: Check for specific mount conflict error code WITH server reachability context**
+        if (sanitizedErrorMessage.includes('-1073741412') || sanitizedStderr.includes('-1073741412')) {
+            if (isServerUnreachable) {
+                // Server was unreachable during connectivity check - treat as connectivity error
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔍 Detected error (-1073741412) but server was unreachable - treating as connectivity error`);
+                }
+                throw new Error('Server is unreachable. Please check the server name and network connection.');
+            } else {
+                // Server was reachable but mount failed with -1073741412 - treat as mount conflict
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔍 Detected mount conflict error (-1073741412) - triggering aggressive cleanup`);
+                }
+                // This specific error indicates mount point conflict - rethrow with special flag
+                const conflictError = new Error('Mount conflict detected. The share may already be mounted by Finder or another process.');
+                (conflictError as any).isConflictError = true;
+                (conflictError as any).originalError = sanitizedErrorMessage;
+                throw conflictError;
             }
         }
         
@@ -411,9 +481,31 @@ export const detectMountConflict = async (sharePath: string): Promise<{
         const systemMounts = await detectSystemSMBMounts();
         
         for (const mount of systemMounts) {
-            if (mount.serverPath.toLowerCase() === normalizedSharePath) {
+            const mountPath = mount.serverPath.toLowerCase();
+            
+            // Check for conflicts with multiple matching strategies
+            let isConflict = false;
+            
+            // Direct match (without username)
+            if (mountPath === normalizedSharePath) {
+                isConflict = true;
+            }
+            
+            // Match with username stripped (system mounts often include username@server/share)
+            const mountPathWithoutUser = mountPath.replace(/^[^@]+@/, '');
+            if (mountPathWithoutUser === normalizedSharePath) {
+                isConflict = true;
+            }
+            
+            // Match adding username to connection path (connection might not include username)
+            if (mountPath === `${getCurrentUsername()}@${normalizedSharePath}`) {
+                isConflict = true;
+            }
+            
+            if (isConflict) {
                 if (process.env.NODE_ENV === 'development') {
                     console.log(`Mount conflict detected: ${sharePath} is already mounted at ${mount.mountPoint}`);
+                    console.log(`   Conflict match: "${normalizedSharePath}" vs "${mountPath}"`);
                 }
                 return {
                     hasConflict: true,
@@ -511,12 +603,37 @@ export const cleanupStaleMounts = async (sharePath: string): Promise<{
         const systemMounts = await detectSystemSMBMounts();
         
         for (const mount of systemMounts) {
-            if (mount.serverPath.toLowerCase() === normalizedSharePath) {
+            const mountPath = mount.serverPath.toLowerCase();
+            
+            // Check for conflicts with multiple matching strategies
+            let isConflict = false;
+            
+            // Direct match (without username)
+            if (mountPath === normalizedSharePath) {
+                isConflict = true;
+            }
+            
+            // Match with username stripped (system mounts often include username@server/share)
+            const mountPathWithoutUser = mountPath.replace(/^[^@]+@/, '');
+            if (mountPathWithoutUser === normalizedSharePath) {
+                isConflict = true;
+            }
+            
+            // Match adding username to connection path (connection might not include username)
+            if (mountPath === `${getCurrentUsername()}@${normalizedSharePath}`) {
+                isConflict = true;
+            }
+            
+            if (isConflict) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🎯 Cleaning up conflicting mount: ${mount.serverPath} at ${mount.mountPoint}`);
+                    console.log(`   Conflict match: "${normalizedSharePath}" vs "${mountPath}"`);
+                }
                 const result = await safeEjectConflictingMount(mount.mountPoint, mount.serverPath);
                 if (result.success) {
                     cleaned++;
                     if (process.env.NODE_ENV === 'development') {
-                        console.log(`Cleaned up stale mount: ${mount.mountPoint}`);
+                        console.log(`✅ Cleaned up stale mount: ${mount.mountPoint}`);
                     }
                 } else {
                     errors.push(result.error || `Failed to clean up ${mount.mountPoint}`);
@@ -837,5 +954,194 @@ export const checkServerConnectivity = async (serverName: string, timeoutMs: num
             accessible: false, 
             error: 'Unable to verify server connectivity. SMB connection may still work.' 
         };
+    }
+};
+
+// **NEW: Aggressive cleanup function for mount conflict resolution**
+// This function is specifically designed to handle the -1073741412 error
+// which occurs when Finder holds stale mounts after network disconnection
+export const aggressiveConflictCleanup = async (sharePath: string): Promise<{
+    cleaned: number;
+    errors: string[];
+    foundFinderMounts: boolean;
+}> => {
+    const errors: string[] = [];
+    let cleaned = 0;
+    let foundFinderMounts = false;
+    
+    try {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🔧 Starting aggressive conflict cleanup for: ${sharePath}`);
+        }
+        
+        const normalizedSharePath = sharePath.replace(/^smb:\/\//, '').replace(/^\/\//, '').toLowerCase();
+        const systemMounts = await detectSystemSMBMounts();
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🔍 Found ${systemMounts.length} SMB mounts to check for conflicts`);
+        }
+        
+        // First, try to clean up any existing SMB mounts
+        for (const mount of systemMounts) {
+            const mountPath = mount.serverPath.toLowerCase();
+            
+            // Check for conflicts with multiple matching strategies
+            let isConflict = false;
+            
+            // Direct match (without username)
+            if (mountPath === normalizedSharePath) {
+                isConflict = true;
+            }
+            
+            // Match with username stripped (system mounts often include username@server/share)
+            const mountPathWithoutUser = mountPath.replace(/^[^@]+@/, '');
+            if (mountPathWithoutUser === normalizedSharePath) {
+                isConflict = true;
+            }
+            
+            // Match adding username to connection path (connection might not include username)
+            if (mountPath === `${getCurrentUsername()}@${normalizedSharePath}`) {
+                isConflict = true;
+            }
+            
+            if (isConflict) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🎯 Found conflicting mount: ${mount.serverPath} at ${mount.mountPoint} (${mount.isAppManaged ? 'app' : 'system/finder'})`);
+                    console.log(`   Conflict match: "${normalizedSharePath}" vs "${mountPath}"`);
+                }
+                
+                if (!mount.isAppManaged && mount.mountPoint.startsWith('/Volumes/')) {
+                    foundFinderMounts = true;
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`🍎 Finder mount detected: ${mount.mountPoint}`);
+                    }
+                }
+                
+                // Try multiple ejection methods for stubborn mounts
+                let ejected = false;
+                
+                // Method 1: diskutil eject (works best for Finder mounts)
+                if (mount.mountPoint.startsWith('/Volumes/')) {
+                    try {
+                        await execPromise(`diskutil eject "${mount.mountPoint}"`, { timeout: 8000 });
+                        ejected = true;
+                        cleaned++;
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`✅ Successfully ejected via diskutil: ${mount.mountPoint}`);
+                        }
+                    } catch (diskutilError) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`⚠️ diskutil eject failed for ${mount.mountPoint}, trying alternatives...`);
+                        }
+                    }
+                }
+                
+                // Method 2: Standard umount if diskutil failed
+                if (!ejected) {
+                    try {
+                        await execPromise(`umount "${mount.mountPoint}"`, { timeout: 5000 });
+                        ejected = true;
+                        cleaned++;
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`✅ Successfully unmounted: ${mount.mountPoint}`);
+                        }
+                    } catch (umountError) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`⚠️ umount failed for ${mount.mountPoint}, trying forced umount...`);
+                        }
+                    }
+                }
+                
+                // Method 3: Forced umount as last resort
+                if (!ejected) {
+                    try {
+                        await execPromise(`umount -f "${mount.mountPoint}"`, { timeout: 8000 });
+                        ejected = true;
+                        cleaned++;
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`✅ Successfully force unmounted: ${mount.mountPoint}`);
+                        }
+                    } catch (forceError) {
+                        const errorMsg = `Failed to eject conflicting mount: ${mount.mountPoint}`;
+                        errors.push(errorMsg);
+                        if (process.env.NODE_ENV === 'development') {
+                            console.error(`❌ All ejection methods failed for: ${mount.mountPoint}`);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // **NEW: Additional cleanup for error -1073741412 when no SMB mounts found**
+        if (systemMounts.length === 0) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔧 No existing SMB mounts found, but error -1073741412 occurred. Trying additional cleanup...`);
+            }
+            
+            // Try to clean up any stale mount directories that might be causing conflicts
+            const mountsDir = `${process.env.HOME}/mounts`;
+            try {
+                const result = await execPromise(`find "${mountsDir}" -maxdepth 1 -type d -name "*" 2>/dev/null || true`, { timeout: 5000 });
+                const directories = result.stdout.trim().split('\n').filter(dir => dir && dir !== mountsDir);
+                
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔍 Found ${directories.length} directories in ${mountsDir}`);
+                }
+                
+                for (const dir of directories) {
+                    try {
+                        // Check if directory is a mount point
+                        const isMounted = await isMountPoint(dir);
+                        if (isMounted) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`🎯 Found stale mount point: ${dir}`);
+                            }
+                            try {
+                                await execPromise(`umount -f "${dir}"`, { timeout: 5000 });
+                                cleaned++;
+                                if (process.env.NODE_ENV === 'development') {
+                                    console.log(`✅ Force unmounted stale mount: ${dir}`);
+                                }
+                            } catch (unmountError) {
+                                if (process.env.NODE_ENV === 'development') {
+                                    console.log(`⚠️ Failed to unmount ${dir}: ${unmountError}`);
+                                }
+                            }
+                        }
+                        
+                        // Also try to remove the directory if it's empty
+                        try {
+                            await execPromise(`rmdir "${dir}" 2>/dev/null || true`, { timeout: 3000 });
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`🧹 Removed directory: ${dir}`);
+                            }
+                        } catch (rmdirError) {
+                            // Ignore rmdir errors
+                        }
+                    } catch (checkError) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`⚠️ Error checking directory ${dir}: ${checkError}`);
+                        }
+                    }
+                }
+            } catch (findError) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`⚠️ Error listing mount directories: ${findError}`);
+                }
+            }
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`🔧 Aggressive cleanup completed: ${cleaned} cleaned, ${errors.length} errors, Finder mounts found: ${foundFinderMounts}`);
+        }
+        
+        return { cleaned, errors, foundFinderMounts };
+    } catch (error) {
+        const errorMessage = `Aggressive cleanup error: ${error instanceof Error ? error.message : String(error)}`;
+        errors.push(errorMessage);
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`❌ Aggressive cleanup failed: ${errorMessage}`);
+        }
+        return { cleaned, errors, foundFinderMounts };
     }
 };
