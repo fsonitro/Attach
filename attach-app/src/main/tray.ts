@@ -329,43 +329,6 @@ export function updateTrayMenu(shares?: Map<string, any>) {
         },
         { type: 'separator' },
         {
-            label: 'Cleanup Stale Mounts',
-            click: async () => {
-                try {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log('🧹 Manual stale mount cleanup triggered from tray...');
-                    }
-                    
-                    if (autoMountServiceRef) {
-                        const result = await autoMountServiceRef.cleanupAllStaleMounts();
-                        
-                        if (process.env.NODE_ENV === 'development') {
-                            if (result.totalCleaned > 0) {
-                                console.log(`✅ Tray cleanup: removed ${result.totalCleaned} stale mounts`);
-                                result.cleanedMounts.forEach((mount: any) => {
-                                    console.log(`   - ${mount.serverPath} (${mount.mountPoint})`);
-                                });
-                            } else {
-                                console.log('🧹 Tray cleanup: no stale mounts found');
-                            }
-                            
-                            if (result.errors.length > 0) {
-                                console.warn(`⚠️ Tray cleanup had ${result.errors.length} errors:`, result.errors);
-                            }
-                        }
-                    } else {
-                        if (process.env.NODE_ENV === 'development') {
-                            console.warn('⚠️ Auto-mount service not available for cleanup');
-                        }
-                    }
-                } catch (error) {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.error('❌ Tray stale mount cleanup failed:', error);
-                    }
-                }
-            }
-        },
-        {
             label: 'Settings',
             click: () => {
                 createSettingsWindow();
