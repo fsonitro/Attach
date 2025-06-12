@@ -338,31 +338,13 @@
                 if (window.api) {
                     // Show loading state
                     if (openButton) {
-                        openButton.textContent = 'Opening...';
+                        openButton.textContent = 'Loading...';
                         openButton.disabled = true;
                         openButton.style.opacity = '0.6';
                     }
                     
                     const shares = await window.api.getMountedShares();
-                    if (shares.length > 0) {
-                        // Add timeout to prevent indefinite loading
-                        const openPromise = window.api.openInFinder(shares[0].mountPoint);
-                        const timeoutPromise = new Promise((_, reject) => {
-                            setTimeout(() => reject(new Error('Operation timed out')), 10000); // 10 second timeout
-                        });
-                        
-                        await Promise.race([openPromise, timeoutPromise]);
-                        
-                        // Success - button will reset after short delay
-                        if (openButton) {
-                            openButton.textContent = 'Opened!';
-                            setTimeout(() => {
-                                openButton.textContent = originalText;
-                                openButton.disabled = false;
-                                openButton.style.opacity = '1';
-                            }, 1500);
-                        }
-                    } else {
+                    if (shares.length === 0) {
                         alert('No mounted shares found. Please mount a share first.');
                         // Reset button immediately for this case
                         if (openButton) {
@@ -370,6 +352,106 @@
                             openButton.disabled = false;
                             openButton.style.opacity = '1';
                         }
+                        return;
+                    }
+                    
+                    let selectedShare = shares[0]; // Default to first share
+                    
+                    // If multiple shares, let user choose
+                    if (shares.length > 1) {
+                        const shareOptions = shares.map((share, index) => 
+                            `${index + 1}. ${share.label} (${share.sharePath})`
+                        ).join('\n');
+                        
+                        const choice = prompt(
+                            `Multiple shares are mounted. Choose which one to open:\n\n${shareOptions}\n\nEnter the number (1-${shares.length}) or 'all' to open all shares:`,
+                            '1'
+                        );
+                        
+                        if (!choice) {
+                            // User cancelled
+                            if (openButton) {
+                                openButton.textContent = originalText;
+                                openButton.disabled = false;
+                                openButton.style.opacity = '1';
+                            }
+                            return;
+                        }
+                        
+                        if (choice.toLowerCase() === 'all') {
+                            // Open all shares
+                            if (openButton) {
+                                openButton.textContent = 'Opening All...';
+                            }
+                            
+                            let successCount = 0;
+                            for (const share of shares) {
+                                try {
+                                    const openPromise = window.api.openInFinder(share.mountPoint);
+                                    const timeoutPromise = new Promise((_, reject) => {
+                                        setTimeout(() => reject(new Error('Operation timed out')), 8000);
+                                    });
+                                    
+                                    await Promise.race([openPromise, timeoutPromise]);
+                                    successCount++;
+                                } catch (error) {
+                                    console.error(`Failed to open ${share.label}:`, error);
+                                }
+                            }
+                            
+                            // Show result
+                            if (openButton) {
+                                openButton.textContent = `Opened ${successCount}/${shares.length}!`;
+                                setTimeout(() => {
+                                    openButton.textContent = originalText;
+                                    openButton.disabled = false;
+                                    openButton.style.opacity = '1';
+                                }, 2000);
+                            }
+                            return;
+                        }
+                        
+                        // Parse the choice number
+                        const choiceNum = parseInt(choice);
+                        if (isNaN(choiceNum) || choiceNum < 1 || choiceNum > shares.length) {
+                            alert('Invalid choice. Please enter a valid number or "all".');
+                            if (openButton) {
+                                openButton.textContent = originalText;
+                                openButton.disabled = false;
+                                openButton.style.opacity = '1';
+                            }
+                            return;
+                        }
+                        
+                        selectedShare = shares[choiceNum - 1];
+                        
+                        if (openButton) {
+                            openButton.textContent = `Opening ${selectedShare.label}...`;
+                        }
+                    } else {
+                        // Single share
+                        if (openButton) {
+                            openButton.textContent = 'Opening...';
+                        }
+                    }
+                    
+                    // Open the selected share
+                    const openPromise = window.api.openInFinder(selectedShare.mountPoint);
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Operation timed out')), 10000); // 10 second timeout
+                    });
+                    
+                    await Promise.race([openPromise, timeoutPromise]);
+                    
+                    // Success - button will reset after short delay
+                    if (openButton) {
+                        const shareLabel = shares.length > 1 ? selectedShare.label : 'folder';
+                        openButton.textContent = `Opened ${shareLabel}!`;
+                        setTimeout(() => {
+                            openButton.textContent = originalText;
+                            openButton.disabled = false;
+                            openButton.style.opacity = '1';
+                        }, 1500);
                     }
                 } else {
                     alert('Service temporarily unavailable. Please restart the application.');

@@ -99,10 +99,13 @@ function getOpenFolderLabel(): string {
         return 'Open Folder (No shares mounted)';
     }
     
-    if (!currentNetworkStatus || !currentNetworkStatus.isOnline) {
-        return 'Open Folder (Network offline - Read Only)';
+    if (mountedShares.size === 1) {
+        // Single share - show direct action
+        const shareLabel = Array.from(mountedShares.keys())[0];
+        return `Open Folder (${shareLabel})`;
     }
     
+    // Multiple shares - will be handled by submenu
     return 'Open Folder';
 }
 
@@ -112,6 +115,148 @@ function getOpenFolderLabel(): string {
 function isOpenFolderSafe(): boolean {
     // Only allow if shares are mounted
     return mountedShares.size > 0;
+}
+
+/**
+ * Create submenu for opening folders when multiple shares are mounted
+ */
+function createOpenFolderSubmenu(): any[] {
+    if (mountedShares.size <= 1) {
+        return []; // No submenu needed for 0 or 1 shares
+    }
+    
+    const submenu: any[] = [];
+    
+    // Add option for each mounted share
+    Array.from(mountedShares.values()).forEach(share => {
+        submenu.push({
+            label: `📁 ${share.label}`,
+            click: async () => {
+                await openSpecificShare(share);
+            }
+        });
+    });
+    
+    // Add separator and "Open All" option if more than one share
+    if (mountedShares.size > 1) {
+        submenu.push(
+            { type: 'separator' },
+            {
+                label: '📂 Open All Shares',
+                click: async () => {
+                    for (const share of mountedShares.values()) {
+                        try {
+                            await openSpecificShare(share);
+                        } catch (error) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.error(`Failed to open ${share.label}:`, error);
+                            }
+                        }
+                    }
+                }
+            }
+        );
+    }
+    
+    return submenu;
+}
+
+/**
+ * Open a specific share with network safety checks
+ */
+async function openSpecificShare(share: any): Promise<void> {
+    try {
+        // **FAST NETWORK CHECK**: Perform immediate real-time network check
+        const { checkNetworkConnectivity } = require('./utils/networkWatcher');
+        let isNetworkOnline = currentNetworkStatus?.isOnline || false;
+        
+        // If network status is stale (older than 2 seconds), do immediate check
+        const statusAge = currentNetworkStatus ? Date.now() - currentNetworkStatus.lastChecked.getTime() : Infinity;
+        if (statusAge > 2000) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔄 Checking network connectivity for ${share.label}...`);
+            }
+            
+            try {
+                // Fast network check with 1 second timeout
+                const quickNetworkCheck = await Promise.race([
+                    checkNetworkConnectivity(),
+                    new Promise<{isOnline: boolean}>((resolve) => {
+                        setTimeout(() => resolve({isOnline: false}), 1000);
+                    })
+                ]);
+                isNetworkOnline = quickNetworkCheck.isOnline;
+            } catch (error) {
+                // If quick check fails, assume offline for safety
+                isNetworkOnline = false;
+            }
+        }
+
+        // Check network connectivity
+        if (!isNetworkOnline) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🚫 Cannot open ${share.label}: Network is disconnected`);
+            }
+            
+            // Import essential notifications for user feedback
+            const { notifyNetworkDisconnected } = require('./utils/essentialNotifications');
+            await notifyNetworkDisconnected();
+            return;
+        }
+
+        // Use safe path opening with timeout protection
+        const { safeOpenPath } = require('./mount/fileSystem');
+        
+        // Perform safety check with timeout
+        const safetyCheck = await Promise.race([
+            safeOpenPath(share.mountPoint),
+            new Promise<{success: boolean, error: string}>((resolve) => {
+                setTimeout(() => {
+                    resolve({
+                        success: false,
+                        error: 'Network share is taking too long to respond. The connection may be slow or unavailable.'
+                    });
+                }, 3000); // 3 second timeout to prevent hanging
+            })
+        ]);
+        
+        if (!safetyCheck.success) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`Failed to access ${share.label}: ${safetyCheck.error}`);
+            }
+            
+            // Show user-friendly notification
+            const { notifySharesDisconnected } = require('./utils/essentialNotifications');
+            await notifySharesDisconnected(1);
+            return;
+        }
+        
+        // Attempt to open the path with timeout
+        await Promise.race([
+            shell.openPath(share.mountPoint),
+            new Promise<void>((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error('Opening folder timed out'));
+                }, 2000); // 2 second timeout for shell.openPath
+            })
+        ]);
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Opened folder: ${share.label} (${share.mountPoint})`);
+        }
+        
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`Failed to open ${share.label}:`, error);
+        }
+        
+        // Show user-friendly error notification
+        const errorMessage = error instanceof Error ? error.message : 'Failed to open folder';
+        if (errorMessage.includes('timeout') || errorMessage.includes('taking too long')) {
+            const { notifySharesDisconnected } = require('./utils/essentialNotifications');
+            await notifySharesDisconnected(1);
+        }
+    }
 }
 
 export function updateTrayMenu(shares?: Map<string, any>) {
@@ -157,6 +302,29 @@ export function updateTrayMenu(shares?: Map<string, any>) {
         });
     }
 
+    // Create the Open Folder menu item - either direct action or submenu
+    const openFolderSubmenu = createOpenFolderSubmenu();
+    const openFolderMenuItem: any = {
+        label: getOpenFolderLabel(),
+        enabled: isOpenFolderSafe()
+    };
+
+    if (openFolderSubmenu.length > 0) {
+        // Multiple shares - use submenu
+        openFolderMenuItem.submenu = openFolderSubmenu;
+    } else if (mountedShares.size === 1) {
+        // Single share - direct click action
+        openFolderMenuItem.click = async () => {
+            const firstShare = Array.from(mountedShares.values())[0];
+            await openSpecificShare(firstShare);
+        };
+    } else {
+        // No shares - disabled item (already handled by enabled: false)
+        openFolderMenuItem.click = () => {
+            // Do nothing - item should be disabled
+        };
+    }
+
     const contextMenu = Menu.buildFromTemplate([
         {
             label: 'Show App',
@@ -170,111 +338,7 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 createMountWindow();
             }
         },
-        {
-            label: getOpenFolderLabel(),
-            enabled: isOpenFolderSafe(),
-            click: async () => {
-                try {
-                    if (mountedShares.size === 0) {
-                        return;
-                    }
-
-                    // **FAST NETWORK CHECK**: Perform immediate real-time network check for faster response
-                    const { checkNetworkConnectivity } = require('./utils/networkWatcher');
-                    let isNetworkOnline = currentNetworkStatus?.isOnline || false;
-                    
-                    // If network status is stale (older than 2 seconds), do immediate check
-                    const statusAge = currentNetworkStatus ? Date.now() - currentNetworkStatus.lastChecked.getTime() : Infinity;
-                    if (statusAge > 2000) {
-                        if (process.env.NODE_ENV === 'development') {
-                            console.log('🔄 Performing immediate network check for Open Folder...');
-                        }
-                        
-                        try {
-                            // Fast network check with 1 second timeout
-                            const quickNetworkCheck = await Promise.race([
-                                checkNetworkConnectivity(),
-                                new Promise<{isOnline: boolean}>((resolve) => {
-                                    setTimeout(() => resolve({isOnline: false}), 1000);
-                                })
-                            ]);
-                            isNetworkOnline = quickNetworkCheck.isOnline;
-                        } catch (error) {
-                            // If quick check fails, assume offline for safety
-                            isNetworkOnline = false;
-                        }
-                    }
-
-                    // Check network connectivity (immediate or cached)
-                    if (!isNetworkOnline) {
-                        if (process.env.NODE_ENV === 'development') {
-                            console.log('🚫 Cannot open folder: Network is disconnected (immediate check)');
-                        }
-                        
-                        // Import essential notifications for user feedback
-                        const { notifyNetworkDisconnected } = require('./utils/essentialNotifications');
-                        await notifyNetworkDisconnected();
-                        return;
-                    }
-
-                    // Get the first mounted share
-                    const firstShare = Array.from(mountedShares.values())[0];
-                    
-                    // Use safe path opening with timeout protection
-                    const { safeOpenPath } = require('./mount/fileSystem');
-                    
-                    // Perform safety check with timeout
-                    const safetyCheck = await Promise.race([
-                        safeOpenPath(firstShare.mountPoint),
-                        new Promise<{success: boolean, error: string}>((resolve) => {
-                            setTimeout(() => {
-                                resolve({
-                                    success: false,
-                                    error: 'Network share is taking too long to respond. The connection may be slow or unavailable.'
-                                });
-                            }, 3000); // 3 second timeout to prevent hanging
-                        })
-                    ]);
-                    
-                    if (!safetyCheck.success) {
-                        if (process.env.NODE_ENV === 'development') {
-                            console.log(`Failed to access path: ${safetyCheck.error}`);
-                        }
-                        
-                        // Show user-friendly notification
-                        const { notifySharesDisconnected } = require('./utils/essentialNotifications');
-                        await notifySharesDisconnected(1);
-                        return;
-                    }
-                    
-                    // Attempt to open the path with timeout
-                    await Promise.race([
-                        shell.openPath(firstShare.mountPoint),
-                        new Promise<void>((_, reject) => {
-                            setTimeout(() => {
-                                reject(new Error('Opening folder timed out'));
-                            }, 2000); // 2 second timeout for shell.openPath
-                        })
-                    ]);
-                    
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log(`Opened folder: ${firstShare.mountPoint}`);
-                    }
-                    
-                } catch (error) {
-                    if (process.env.NODE_ENV === 'development') {
-                        console.error('Failed to open folder:', error);
-                    }
-                    
-                    // Show user-friendly error notification
-                    const errorMessage = error instanceof Error ? error.message : 'Failed to open folder';
-                    if (errorMessage.includes('timeout') || errorMessage.includes('taking too long')) {
-                        const { notifySharesDisconnected } = require('./utils/essentialNotifications');
-                        await notifySharesDisconnected(1);
-                    }
-                }
-            }
-        },
+        openFolderMenuItem,
         {
             label: 'Mounted Drives',
             submenu: mountedDrivesSubmenu

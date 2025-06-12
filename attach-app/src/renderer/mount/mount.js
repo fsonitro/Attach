@@ -293,7 +293,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Add input validation
     sharePathInput.addEventListener('input', (e) => {
         const value = e.target.value;
-        if (value && !value.match(/^(smb:\/\/|\/\/)?[\w\.-]+(\/[\w\.-]+)*\/?$/)) {
+        // Allow share paths with special characters including $ for administrative shares
+        if (value && !value.match(/^(smb:\/\/|\/\/)?[\w.\-\$]+(\/[\w.\-\$]+)*\/?$/)) {
             sharePathInput.setCustomValidity('Please enter a valid SMB path (e.g., smb://server/share)');
         } else {
             sharePathInput.setCustomValidity('');

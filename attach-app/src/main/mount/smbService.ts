@@ -103,8 +103,9 @@ export const findCorrectShareCase = async (serverName: string, shareName: string
 
 // Function to mount an SMB share
 export const mountSMBShare = async (sharePath: string, username: string, password: string): Promise<string> => {
-    // Sanitize inputs to prevent command injection
-    const sanitizedUsername = username.replace(/[^a-zA-Z0-9._-]/g, '');
+    // Sanitize username to allow email addresses and common special characters
+    // Allow alphanumeric, dots, underscores, hyphens, and @ symbols for email addresses
+    const sanitizedUsername = username.replace(/[^a-zA-Z0-9._@-]/g, '');
     
     // Properly format the share path for mount_smbfs
     // Convert smb://server/share or //server/share to server/share
@@ -214,9 +215,10 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     }
     
     // Build the mount command with proper URL encoding for special characters
-    // URL encode the password to handle special characters like $, {, }, =, ~, etc.
+    // URL encode both username and password to handle special characters like @, $, {, }, =, ~, etc.
+    const encodedUsername = encodeURIComponent(sanitizedUsername);
     const encodedPassword = encodeURIComponent(password);
-    const command = `mount_smbfs "smb://${sanitizedUsername}:${encodedPassword}@${sanitizedSharePath}" "${mountPoint}"`;
+    const command = `mount_smbfs "smb://${encodedUsername}:${encodedPassword}@${sanitizedSharePath}" "${mountPoint}"`;
 
     if (process.env.NODE_ENV === 'development') {
         console.log(`Attempting to mount: //${sanitizedSharePath} as user: ${sanitizedUsername}`);
@@ -253,9 +255,13 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
         const errorMessage = error instanceof Error ? error.message : String(error);
         const stderr = (error as any).stderr || '';
         
-        // Sanitize error messages to remove any potential password exposure
-        const sanitizedErrorMessage = errorMessage.replace(new RegExp(encodeURIComponent(password), 'g'), '[HIDDEN]');
-        const sanitizedStderr = stderr.replace(new RegExp(encodeURIComponent(password), 'g'), '[HIDDEN]');
+        // Sanitize error messages to remove any potential credential exposure
+        const sanitizedErrorMessage = errorMessage
+            .replace(new RegExp(encodeURIComponent(password), 'g'), '[HIDDEN]')
+            .replace(new RegExp(encodeURIComponent(sanitizedUsername), 'g'), '[HIDDEN]');
+        const sanitizedStderr = stderr
+            .replace(new RegExp(encodeURIComponent(password), 'g'), '[HIDDEN]')
+            .replace(new RegExp(encodeURIComponent(sanitizedUsername), 'g'), '[HIDDEN]');
         
         // Log sanitized error for debugging (only in development)
         if (process.env.NODE_ENV === 'development') {
