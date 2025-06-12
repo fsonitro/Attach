@@ -372,7 +372,7 @@ export function updateTrayMenu(shares?: Map<string, any>) {
             }
         },
         {
-            label: 'About Attach',
+            label: 'About',
             click: () => {
                 createAboutWindow();
             }

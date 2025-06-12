@@ -20,7 +20,7 @@ export interface AutoMountResult {
 // Configuration constants
 const AUTO_MOUNT_CONFIG = {
     CONFLICT_RESOLUTION_DELAY: 2000, // 2 seconds delay after cleanup
-    MAX_MOUNT_RETRIES: 3              // Maximum retries for mount conflicts
+    MAX_MOUNT_RETRIES: 5              // Maximum retries for mount conflicts
 } as const;
 
 export class AutoMountService {
