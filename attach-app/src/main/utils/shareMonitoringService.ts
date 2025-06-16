@@ -8,6 +8,7 @@ import { unmountSMBShare, quickConnectivityCheck } from '../mount/smbService';
 import { MountedShare } from '../../types';
 import { notifySharesDisconnected, notifySharesReconnected } from './essentialNotifications';
 import { connectionStore, SavedConnection } from './connectionStore';
+import { reliableNetworkCheck } from './networkUtils';
 
 const execPromise = promisify(exec);
 
@@ -370,13 +371,12 @@ export class ShareMonitoringService extends EventEmitter {
     }
 
     /**
-     * Quick network availability check
+     * Quick network availability check using reliable DNS/HTTPS method
      */
     private async isNetworkAvailable(): Promise<boolean> {
         try {
-            // Simple ping to check network
-            await execPromise('ping -c 1 -W 2000 8.8.8.8', { timeout: 3000 });
-            return true;
+            // Use reliable network check with DNS/HTTPS and ping fallback
+            return await reliableNetworkCheck(3000);
         } catch (error) {
             return false;
         }

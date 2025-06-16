@@ -4,9 +4,12 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { EventEmitter } from 'events';
+import * as dns from 'dns';
+import * as https from 'https';
 import { connectionStore, SavedConnection } from './connectionStore';
 import { MountedShare } from '../../types';
 import { createShareMonitoringService, ShareMonitoringService } from './shareMonitoringService';
+import { customNetworkCheck } from './networkUtils';
 import { 
     notifyNetworkDisconnected, 
     notifyNetworkReconnected, 
@@ -17,6 +20,9 @@ import {
 } from './essentialNotifications';
 
 const execPromise = promisify(exec);
+
+// Check if we're in development mode
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 // Configuration constants
 const NETWORK_CONFIG = {
@@ -131,28 +137,50 @@ export class NetworkWatcher extends EventEmitter {
     }
 
     /**
-     * Quick network check with very short timeout for fast user feedback
+     * Quick network check using custom DNS/HTTPS method for better reliability
      */
     private async isNetworkOnline(): Promise<boolean> {
         try {
-            // Ultra-fast ping with minimal timeout for quick status updates
-            await execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: NETWORK_CONFIG.TIMEOUT_MS });
-            return true;
+            if (isDevelopment) console.log('🔍 [NetworkWatcher] Starting network connectivity check...');
+            const result = await customNetworkCheck(NETWORK_CONFIG.TIMEOUT_MS);
+            if (isDevelopment) console.log('🔍 [NetworkWatcher] Custom network check result:', result);
+            return result;
         } catch (error) {
-            return false;
+            if (isDevelopment) console.log('⚠️ [NetworkWatcher] Custom network check failed, falling back to ping:', error);
+            // Fallback to ping if custom check fails
+            try {
+                if (isDevelopment) console.log('🏓 [NetworkWatcher] Attempting ping fallback to 8.8.8.8...');
+                await execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: NETWORK_CONFIG.TIMEOUT_MS });
+                if (isDevelopment) console.log('✅ [NetworkWatcher] Ping fallback successful');
+                return true;
+            } catch (pingError) {
+                if (isDevelopment) console.log('❌ [NetworkWatcher] Ping fallback also failed:', pingError);
+                return false;
+            }
         }
     }
 
     /**
-     * Check internet connectivity (different from just network connectivity)
+     * Check internet connectivity using custom DNS/HTTPS method
      */
     private async hasInternetConnectivity(): Promise<boolean> {
         try {
-            // Quick internet check with reduced timeout
-            await execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: NETWORK_CONFIG.INTERNET_TIMEOUT_MS });
-            return true;
+            if (isDevelopment) console.log('🌐 [NetworkWatcher] Starting internet connectivity check...');
+            const result = await customNetworkCheck(NETWORK_CONFIG.INTERNET_TIMEOUT_MS);
+            if (isDevelopment) console.log('🌐 [NetworkWatcher] Custom internet check result:', result);
+            return result;
         } catch (error) {
-            return false;
+            if (isDevelopment) console.log('⚠️ [NetworkWatcher] Custom internet check failed, falling back to ping:', error);
+            // Fallback to ping if custom check fails
+            try {
+                if (isDevelopment) console.log('🏓 [NetworkWatcher] Attempting ping fallback to 1.1.1.1...');
+                await execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: NETWORK_CONFIG.INTERNET_TIMEOUT_MS });
+                if (isDevelopment) console.log('✅ [NetworkWatcher] Internet ping fallback successful');
+                return true;
+            } catch (pingError) {
+                if (isDevelopment) console.log('❌ [NetworkWatcher] Internet ping fallback also failed:', pingError);
+                return false;
+            }
         }
     }
 
@@ -341,26 +369,57 @@ export function createNetworkWatcher(mountedShares: Map<string, MountedShare>): 
  */
 export async function checkNetworkConnectivity(): Promise<{isOnline: boolean, hasInternet: boolean}> {
     try {
-        // Ultra-fast ping check with minimal timeout
-        const isOnlinePromise = execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: 1000 })
-            .then(() => true)
-            .catch(() => false);
-            
-        const isOnline = await isOnlinePromise;
+        if (isDevelopment) console.log('🚀 [NetworkWatcher] Standalone network check starting...');
+        const isOnlineResult = await customNetworkCheck(1000);
+        if (isDevelopment) console.log('🚀 [NetworkWatcher] Standalone online check result:', isOnlineResult);
         
-        if (!isOnline) {
+        if (!isOnlineResult) {
             return { isOnline: false, hasInternet: false };
         }
         
         // Quick internet check if network is online
-        const hasInternetPromise = execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: 1500 })
-            .then(() => true)
-            .catch(() => false);
-            
-        const hasInternet = await hasInternetPromise;
+        if (isDevelopment) console.log('🚀 [NetworkWatcher] Standalone internet check starting...');
+        const hasInternetResult = await customNetworkCheck(1500);
+        if (isDevelopment) console.log('🚀 [NetworkWatcher] Standalone internet check result:', hasInternetResult);
         
-        return { isOnline, hasInternet };
+        return { isOnline: isOnlineResult, hasInternet: hasInternetResult };
     } catch (error) {
-        return { isOnline: false, hasInternet: false };
+        if (isDevelopment) console.log('⚠️ [NetworkWatcher] Standalone custom check failed, using ping fallback:', error);
+        // Fallback to ping-based check
+        try {
+            if (isDevelopment) console.log('🏓 [NetworkWatcher] Standalone ping fallback for online check...');
+            const isOnlinePromise = execPromise('ping -c 1 -W 500 8.8.8.8', { timeout: 1000 })
+                .then(() => {
+                    if (isDevelopment) console.log('✅ [NetworkWatcher] Standalone ping online successful');
+                    return true;
+                })
+                .catch(() => {
+                    if (isDevelopment) console.log('❌ [NetworkWatcher] Standalone ping online failed');
+                    return false;
+                });
+                
+            const isOnline = await isOnlinePromise;
+            
+            if (!isOnline) {
+                return { isOnline: false, hasInternet: false };
+            }
+            
+            if (isDevelopment) console.log('🏓 [NetworkWatcher] Standalone ping fallback for internet check...');
+            const hasInternetPromise = execPromise('ping -c 1 -W 1000 1.1.1.1', { timeout: 1500 })
+                .then(() => {
+                    if (isDevelopment) console.log('✅ [NetworkWatcher] Standalone ping internet successful');
+                    return true;
+                })
+                .catch(() => {
+                    if (isDevelopment) console.log('❌ [NetworkWatcher] Standalone ping internet failed');
+                    return false;
+                });
+                
+            const hasInternet = await hasInternetPromise;
+            
+            return { isOnline, hasInternet };
+        } catch (fallbackError) {
+            return { isOnline: false, hasInternet: false };
+        }
     }
 }
