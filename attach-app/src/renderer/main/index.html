@@ -2,29 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta        .app-name {
-            font-size: 32px;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 8px;
-            letter-spacing: -0.02em;
-            /* Staggered animation */
-            animation: textFadeIn 0.5s ease-out 0.4s both;
-        }
-        
-        .app-description {
-            font-size: 16px;
-            color: #98989d;
-            margin-bottom: 32px;
-            font-weight: 400;
-            /* Staggered animation */
-            animation: textFadeIn 0.5s ease-out 0.5s both;
-        }description {
-            font-size: 16px;
-            color: #98989d;
-            margin-bottom: 32px;
-            font-weight: 400;
-        }viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Attach</title>
     <style>
         /* Main Window Styles - Dark macOS Style */
@@ -168,6 +146,164 @@
             background: rgba(99, 99, 102, 0.4);
         }
         
+        /* Dropdown menu styles */
+        .btn-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        /* Dropdown overlay for better visibility */
+        .dropdown-overlay {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.1);
+            z-index: 999998 !important;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+            display: none;
+        }
+        
+        .dropdown-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .dropdown-menu {
+            position: fixed !important;
+            top: auto;
+            left: auto;
+            right: auto;
+            background: rgba(28, 28, 30, 0.98);
+            border: 1px solid rgba(99, 99, 102, 0.6);
+            border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.3);
+            z-index: 999999 !important;
+            min-width: 200px;
+            max-width: 300px;
+            width: auto;
+            margin: 0;
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            overflow: hidden;
+            max-height: 350px;
+            overflow-y: auto;
+            /* Custom scrollbar for macOS style */
+            scrollbar-width: thin;
+            scrollbar-color: rgba(99, 99, 102, 0.6) transparent;
+            /* Animation properties */
+            display: none;
+            opacity: 0;
+            transform: translateY(-10px) scale(0.95);
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            pointer-events: none;
+            /* Ensure always visible */
+            contain: layout style paint;
+            will-change: transform, opacity;
+        }
+        
+        .dropdown-menu.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+        
+        /* Webkit scrollbar styling for macOS look */
+        .dropdown-menu::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .dropdown-menu::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .dropdown-menu::-webkit-scrollbar-thumb {
+            background: rgba(99, 99, 102, 0.6);
+            border-radius: 3px;
+        }
+        
+        .dropdown-menu::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 99, 102, 0.8);
+        }
+        
+        
+        .dropdown-item {
+            padding: 10px 14px;
+            color: #ffffff;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border-bottom: 1px solid rgba(99, 99, 102, 0.15);
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-height: 40px;
+            position: relative;
+        }
+        
+        .dropdown-item .share-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        
+        .dropdown-item .share-icon {
+            flex-shrink: 0;
+            width: 16px;
+            text-align: center;
+        }
+        
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+        
+        .dropdown-item:hover {
+            background: rgba(0, 122, 255, 0.15);
+            color: #ffffff;
+        }
+        
+        .dropdown-item:active {
+            background: rgba(0, 122, 255, 0.25);
+            transform: scale(0.98);
+        }
+        
+        .dropdown-separator {
+            height: 1px;
+            background: rgba(99, 99, 102, 0.4);
+            margin: 8px 0;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        
+        .dropdown-item.open-all {
+            color: #007aff;
+            font-weight: 600;
+            background: rgba(0, 122, 255, 0.08);
+            position: sticky;
+            bottom: 0;
+            z-index: 2;
+            border-top: 1px solid rgba(99, 99, 102, 0.3);
+            border-bottom: none;
+            margin-top: auto;
+        }
+        
+        .dropdown-item.open-all:hover {
+            background: rgba(0, 122, 255, 0.2);
+            color: #ffffff;
+        }
+        
         /* Status section */
         .status-section {
             margin-top: 40px;
@@ -261,15 +397,25 @@
             <button class="btn btn-primary" onclick="openMounter()">
                 Mount Share
             </button>
-            <button class="btn btn-secondary" onclick="openFolder()">
-                Open Folder
-            </button>
+            <div class="btn-container">
+                <button class="btn btn-secondary" id="openFolderBtn" onclick="openFolder()">
+                    Open Folder
+                </button>
+            </div>
             <button class="btn btn-secondary" onclick="openSettings()">
                 Settings
             </button>
             <button class="btn btn-secondary" onclick="openAbout()">
                 About
             </button>
+        </div>
+        
+        <!-- Dropdown overlay for better visibility -->
+        <div class="dropdown-overlay" id="dropdownOverlay"></div>
+        
+        <!-- Dropdown menu positioned outside button container for proper layering -->
+        <div class="dropdown-menu" id="openFolderDropdown">
+            <!-- Dropdown items will be populated dynamically -->
         </div>
         
         <div class="status-section">
@@ -288,9 +434,44 @@
     </div>
     
     <script>
+        // Handle window resize to reposition dropdown
+        window.addEventListener('resize', () => {
+            const dropdown = document.getElementById('openFolderDropdown');
+            if (dropdown.classList.contains('show')) {
+                const button = document.getElementById('openFolderBtn');
+                positionAndShowDropdown(button);
+            }
+        });
+
         // Initialize stats when page loads
         document.addEventListener('DOMContentLoaded', async () => {
             await updateStats();
+            await updateOpenFolderButton();
+            
+            // Listen for share changes from main process
+            if (window.api && window.api.onSharesChanged) {
+                window.api.onSharesChanged((shares) => {
+                    console.log('📢 Received shares update:', shares);
+                    currentShares = shares;
+                    
+                    // Visual feedback for share changes
+                    const openButton = document.getElementById('openFolderBtn');
+                    const originalText = openButton.textContent;
+                    
+                    // Brief flash to indicate update
+                    openButton.style.transition = 'all 0.3s ease';
+                    openButton.style.transform = 'scale(1.05)';
+                    
+                    setTimeout(() => {
+                        openButton.style.transform = 'scale(1)';
+                    }, 200);
+                    
+                    updateOpenFolderButton();
+                    updateStats();
+                });
+            } else if (window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
+                console.warn('⚠️ Event system not available, falling back to polling');
+            }
         });
 
         async function updateStats() {
@@ -303,6 +484,13 @@
                     // Update saved connections count
                     const savedConnections = await window.api.getSavedConnections();
                     document.getElementById('savedCount').textContent = savedConnections.length;
+                    
+                    // Also update currentShares if they differ
+                    if (shares.length !== currentShares.length || 
+                        JSON.stringify(shares) !== JSON.stringify(currentShares)) {
+                        currentShares = shares;
+                        await updateOpenFolderButton();
+                    }
                 } else {
                     // Development mode fallback
                     document.getElementById('mountedCount').textContent = '0';
@@ -330,156 +518,505 @@
             }
         }
         
-        async function openFolder() {
-            const openButton = document.querySelector('.action-btn:nth-child(1)'); // First action button
-            const originalText = openButton ? openButton.textContent : 'Open Folder';
-            
+        // Initialize dropdown functionality
+        let currentShares = [];
+        
+        // Update open folder button and dropdown based on mounted shares
+        async function updateOpenFolderButton() {
             try {
                 if (window.api) {
-                    // Show loading state
-                    if (openButton) {
-                        openButton.textContent = 'Loading...';
-                        openButton.disabled = true;
-                        openButton.style.opacity = '0.6';
+                    currentShares = await window.api.getMountedShares();
+                    
+                    // Debug logging in development
+                    if (window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
+                        console.log('📊 Current mounted shares:', currentShares);
                     }
                     
-                    const shares = await window.api.getMountedShares();
-                    if (shares.length === 0) {
+                    const openButton = document.getElementById('openFolderBtn');
+                    const dropdown = document.getElementById('openFolderDropdown');
+                    
+                    if (currentShares.length === 0) {
+                        openButton.textContent = 'Open Folder (No shares)';
+                        openButton.disabled = true;
+                        openButton.style.opacity = '0.5';
+                        dropdown.style.display = 'none';
+                    } else if (currentShares.length === 1) {
+                        const displayName = currentShares[0].label.length > 15 
+                            ? currentShares[0].label.substring(0, 12) + '...' 
+                            : currentShares[0].label;
+                        openButton.textContent = `Open Folder (${displayName})`;
+                        openButton.title = `Open Folder (${currentShares[0].label})`;
+                        openButton.disabled = false;
+                        openButton.style.opacity = '1';
+                        dropdown.style.display = 'none';
+                    } else {
+                        openButton.textContent = `Open Folder (${currentShares.length})`;
+                        openButton.title = `${currentShares.length} shares available - click to see options`;
+                        openButton.disabled = false;
+                        openButton.style.opacity = '1';
+                        updateDropdownMenu();
+                    }
+                } else {
+                    console.warn('❌ window.api is not available');
+                }
+            } catch (error) {
+                console.error('Error updating open folder button:', error);
+            }
+        }
+        
+        // Update dropdown menu items
+        function updateDropdownMenu() {
+            const dropdown = document.getElementById('openFolderDropdown');
+            dropdown.innerHTML = '';
+            
+            // Add scroll indicator if there are many shares
+            if (currentShares.length > 8) {
+                const scrollHint = document.createElement('div');
+                scrollHint.className = 'dropdown-item scroll-hint';
+                scrollHint.innerHTML = `📋 ${currentShares.length} Shares (scroll for more)`;
+                scrollHint.style.cssText = `
+                    background: rgba(58, 58, 60, 0.8) !important;
+                    color: rgba(152, 152, 157, 0.9) !important;
+                    font-weight: 500 !important;
+                    font-size: 11px !important;
+                    text-align: center !important;
+                    cursor: default !important;
+                    padding: 4px 12px !important;
+                    min-height: 28px !important;
+                    border-bottom: 1px solid rgba(99, 99, 102, 0.2) !important;
+                    position: sticky !important;
+                    top: 0px !important;
+                    z-index: 8 !important;
+                    backdrop-filter: blur(15px) !important;
+                    -webkit-backdrop-filter: blur(15px) !important;
+                `;
+                dropdown.appendChild(scrollHint);
+            }
+            
+            // Add individual share items
+            currentShares.forEach((share, index) => {
+                const item = document.createElement('div');
+                item.className = 'dropdown-item';
+                
+                // Create structured content for better text handling
+                const icon = document.createElement('span');
+                icon.className = 'share-icon';
+                icon.textContent = '📁';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'share-name';
+                nameSpan.textContent = share.label;
+                nameSpan.title = share.label; // Full name on hover
+                
+                item.appendChild(icon);
+                item.appendChild(nameSpan);
+                
+                // Add subtle numbering for many shares
+                if (currentShares.length > 10) {
+                    const numberSpan = document.createElement('span');
+                    numberSpan.style.cssText = `
+                        font-size: 10px;
+                        color: rgba(152, 152, 157, 0.8);
+                        margin-left: auto;
+                        font-weight: 400;
+                        flex-shrink: 0;
+                    `;
+                    numberSpan.textContent = `${index + 1}`;
+                    item.appendChild(numberSpan);
+                }
+                
+                item.onclick = () => openSpecificShare(share);
+                dropdown.appendChild(item);
+            });
+            
+            // Add "Open All" at the BOTTOM (but sticky so always visible) if more than one share
+            if (currentShares.length > 1) {
+                // Add separator before "Open All"
+                const separator = document.createElement('div');
+                separator.className = 'dropdown-separator';
+                separator.style.cssText = `
+                    height: 2px !important;
+                    background: linear-gradient(90deg, transparent, rgba(0, 122, 255, 0.4), transparent) !important;
+                    margin: 0 !important;
+                    position: sticky !important;
+                    bottom: 40px !important;
+                    z-index: 9 !important;
+                `;
+                dropdown.appendChild(separator);
+                
+                const openAllItem = document.createElement('div');
+                openAllItem.className = 'dropdown-item open-all';
+                openAllItem.style.cssText = `
+                    color: #007aff !important;
+                    font-weight: 600 !important;
+                    background: rgba(0, 122, 255, 0.15) !important;
+                    position: sticky !important;
+                    bottom: 0 !important;
+                    z-index: 10 !important;
+                    border-top: 2px solid rgba(0, 122, 255, 0.4) !important;
+                    border-bottom: none !important;
+                    border-radius: 0 0 12px 12px !important;
+                    backdrop-filter: blur(20px) !important;
+                    -webkit-backdrop-filter: blur(20px) !important;
+                    margin-top: auto !important;
+                    padding: 10px 14px !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 8px !important;
+                    min-height: 40px !important;
+                    cursor: pointer !important;
+                    transition: all 0.15s ease !important;
+                `;
+                
+                const icon = document.createElement('span');
+                icon.className = 'share-icon';
+                icon.innerHTML = '📂'; // Fixed: Use innerHTML for emoji
+                icon.style.cssText = `
+                    color: #007aff !important;
+                    flex-shrink: 0 !important;
+                    width: 16px !important;
+                    text-align: center !important;
+                    font-size: 14px !important;
+                `;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'share-name';
+                nameSpan.textContent = `Open All ${currentShares.length} Shares`;
+                nameSpan.style.cssText = `
+                    font-weight: 600 !important;
+                    color: #007aff !important;
+                    flex: 1 !important;
+                `;
+                
+                openAllItem.appendChild(icon);
+                openAllItem.appendChild(nameSpan);
+                openAllItem.onclick = () => openAllShares();
+                
+                // Enhanced hover effects
+                openAllItem.onmouseenter = () => {
+                    openAllItem.style.background = 'rgba(0, 122, 255, 0.3) !important';
+                    icon.style.color = '#ffffff !important';
+                    nameSpan.style.color = '#ffffff !important';
+                    openAllItem.style.transform = 'translateY(-1px)';
+                };
+                openAllItem.onmouseleave = () => {
+                    openAllItem.style.background = 'rgba(0, 122, 255, 0.15) !important';
+                    icon.style.color = '#007aff !important';
+                    nameSpan.style.color = '#007aff !important';
+                    openAllItem.style.transform = 'translateY(0)';
+                };
+                openAllItem.onmousedown = () => {
+                    openAllItem.style.transform = 'scale(0.98)';
+                };
+                openAllItem.onmouseup = () => {
+                    openAllItem.style.transform = 'translateY(-1px)';
+                };
+                
+                dropdown.appendChild(openAllItem);
+            }
+        }
+        
+        // Enhanced dropdown positioning function
+        function positionAndShowDropdown(button) {
+            const dropdown = document.getElementById('openFolderDropdown');
+            const buttonRect = button.getBoundingClientRect();
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            // Constants for dropdown sizing and spacing
+            const dropdownMaxWidth = 300;
+            const dropdownMaxHeight = 350;
+            const dropdownMinWidth = 200;
+            const edgePadding = 12; // Minimum distance from window edges
+            const buttonSpacing = 6; // Space between button and dropdown
+            
+            // Calculate available space in all directions
+            const spaceLeft = buttonRect.left;
+            const spaceRight = windowWidth - buttonRect.right;
+            const spaceAbove = buttonRect.top;
+            const spaceBelow = windowHeight - buttonRect.bottom;
+            
+            // Calculate optimal width
+            let optimalWidth = Math.max(buttonRect.width, dropdownMinWidth);
+            optimalWidth = Math.min(optimalWidth, dropdownMaxWidth);
+            
+            // Ensure dropdown fits within window bounds
+            const maxWidthFromLeft = windowWidth - buttonRect.left - edgePadding;
+            const maxWidthFromRight = buttonRect.right - edgePadding;
+            optimalWidth = Math.min(optimalWidth, Math.max(maxWidthFromLeft, maxWidthFromRight));
+            
+            // Calculate horizontal position
+            let dropdownLeft = buttonRect.left;
+            
+            // If dropdown would exceed right edge, align to the right of button
+            if (dropdownLeft + optimalWidth > windowWidth - edgePadding) {
+                dropdownLeft = buttonRect.right - optimalWidth;
+            }
+            
+            // If still exceeding left edge, align to window edge
+            if (dropdownLeft < edgePadding) {
+                dropdownLeft = edgePadding;
+                optimalWidth = Math.min(optimalWidth, windowWidth - (edgePadding * 2));
+            }
+            
+            // Calculate vertical position and height
+            let dropdownTop, maxHeight, transformY;
+            
+            // Prefer positioning below button
+            if (spaceBelow >= 150) {
+                // Enough space below
+                dropdownTop = buttonRect.bottom + buttonSpacing;
+                maxHeight = Math.min(dropdownMaxHeight, spaceBelow - buttonSpacing - edgePadding);
+                transformY = 'translateY(0)';
+            } else if (spaceAbove >= 150) {
+                // Not enough space below, but enough above
+                dropdownTop = buttonRect.top - buttonSpacing;
+                maxHeight = Math.min(dropdownMaxHeight, spaceAbove - buttonSpacing - edgePadding);
+                transformY = 'translateY(-100%)';
+            } else {
+                // Limited space both ways - use the larger space
+                if (spaceBelow >= spaceAbove) {
+                    // Use below with constrained height
+                    dropdownTop = buttonRect.bottom + buttonSpacing;
+                    maxHeight = Math.max(100, spaceBelow - buttonSpacing - edgePadding);
+                    transformY = 'translateY(0)';
+                } else {
+                    // Use above with constrained height
+                    dropdownTop = buttonRect.top - buttonSpacing;
+                    maxHeight = Math.max(100, spaceAbove - buttonSpacing - edgePadding);
+                    transformY = 'translateY(-100%)';
+                }
+            }
+            
+            // Apply positioning styles
+            dropdown.style.position = 'fixed';
+            dropdown.style.left = `${Math.round(dropdownLeft)}px`;
+            dropdown.style.top = `${Math.round(dropdownTop)}px`;
+            dropdown.style.width = `${Math.round(optimalWidth)}px`;
+            dropdown.style.maxHeight = `${Math.round(maxHeight)}px`;
+            dropdown.style.transform = transformY;
+            dropdown.style.zIndex = '999999';
+            
+            // Debug logging in development
+            if (window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
+                console.log('🎯 Dropdown positioning:', {
+                    window: { width: windowWidth, height: windowHeight },
+                    button: buttonRect,
+                    dropdown: {
+                        left: dropdownLeft,
+                        top: dropdownTop,
+                        width: optimalWidth,
+                        maxHeight: maxHeight,
+                        transform: transformY
+                    },
+                    spaces: { left: spaceLeft, right: spaceRight, above: spaceAbove, below: spaceBelow }
+                });
+            }
+            
+            // Show dropdown
+            showDropdown();
+        }
+         // Helper functions for dropdown visibility
+        function showDropdown() {
+            const dropdown = document.getElementById('openFolderDropdown');
+            const overlay = document.getElementById('dropdownOverlay');
+            
+            updateDropdownMenu();
+            
+            // Show overlay
+            overlay.style.display = 'block';
+            overlay.offsetHeight; // Force reflow
+            overlay.classList.add('show');
+            
+            // Show dropdown
+            dropdown.style.display = 'block';
+            dropdown.offsetHeight; // Force reflow
+            dropdown.classList.add('show');
+        }
+        
+        function hideDropdown() {
+            const dropdown = document.getElementById('openFolderDropdown');
+            const overlay = document.getElementById('dropdownOverlay');
+            
+            // Hide with animation
+            dropdown.classList.remove('show');
+            overlay.classList.remove('show');
+            
+            setTimeout(() => {
+                dropdown.style.display = 'none';
+                overlay.style.display = 'none';
+            }, 200);
+        }
+
+        // Handle click outside dropdown to close it
+        document.addEventListener('click', (event) => {
+            const dropdown = document.getElementById('openFolderDropdown');
+            const overlay = document.getElementById('dropdownOverlay');
+            const btnContainer = document.querySelector('.btn-container');
+            const button = document.getElementById('openFolderBtn');
+            
+            // Check if click is outside both the button and dropdown
+            if (!btnContainer.contains(event.target) && 
+                !dropdown.contains(event.target) && 
+                event.target !== button) {
+                hideDropdown();
+            }
+            
+            // Also close if overlay is clicked
+            if (event.target === overlay) {
+                hideDropdown();
+            }
+        });
+
+        async function openFolder() {
+            try {
+                if (window.api) {
+                    currentShares = await window.api.getMountedShares();
+                    
+                    if (currentShares.length === 0) {
                         alert('No mounted shares found. Please mount a share first.');
-                        // Reset button immediately for this case
-                        if (openButton) {
-                            openButton.textContent = originalText;
-                            openButton.disabled = false;
-                            openButton.style.opacity = '1';
-                        }
                         return;
                     }
                     
-                    let selectedShare = shares[0]; // Default to first share
-                    
-                    // If multiple shares, let user choose
-                    if (shares.length > 1) {
-                        const shareOptions = shares.map((share, index) => 
-                            `${index + 1}. ${share.label} (${share.sharePath})`
-                        ).join('\n');
-                        
-                        const choice = prompt(
-                            `Multiple shares are mounted. Choose which one to open:\n\n${shareOptions}\n\nEnter the number (1-${shares.length}) or 'all' to open all shares:`,
-                            '1'
-                        );
-                        
-                        if (!choice) {
-                            // User cancelled
-                            if (openButton) {
-                                openButton.textContent = originalText;
-                                openButton.disabled = false;
-                                openButton.style.opacity = '1';
-                            }
-                            return;
-                        }
-                        
-                        if (choice.toLowerCase() === 'all') {
-                            // Open all shares
-                            if (openButton) {
-                                openButton.textContent = 'Opening All...';
-                            }
-                            
-                            let successCount = 0;
-                            for (const share of shares) {
-                                try {
-                                    const openPromise = window.api.openInFinder(share.mountPoint);
-                                    const timeoutPromise = new Promise((_, reject) => {
-                                        setTimeout(() => reject(new Error('Operation timed out')), 8000);
-                                    });
-                                    
-                                    await Promise.race([openPromise, timeoutPromise]);
-                                    successCount++;
-                                } catch (error) {
-                                    console.error(`Failed to open ${share.label}:`, error);
-                                }
-                            }
-                            
-                            // Show result
-                            if (openButton) {
-                                openButton.textContent = `Opened ${successCount}/${shares.length}!`;
-                                setTimeout(() => {
-                                    openButton.textContent = originalText;
-                                    openButton.disabled = false;
-                                    openButton.style.opacity = '1';
-                                }, 2000);
-                            }
-                            return;
-                        }
-                        
-                        // Parse the choice number
-                        const choiceNum = parseInt(choice);
-                        if (isNaN(choiceNum) || choiceNum < 1 || choiceNum > shares.length) {
-                            alert('Invalid choice. Please enter a valid number or "all".');
-                            if (openButton) {
-                                openButton.textContent = originalText;
-                                openButton.disabled = false;
-                                openButton.style.opacity = '1';
-                            }
-                            return;
-                        }
-                        
-                        selectedShare = shares[choiceNum - 1];
-                        
-                        if (openButton) {
-                            openButton.textContent = `Opening ${selectedShare.label}...`;
-                        }
+                    if (currentShares.length === 1) {
+                        // Single share - open directly
+                        await openSpecificShare(currentShares[0]);
                     } else {
-                        // Single share
-                        if (openButton) {
-                            openButton.textContent = 'Opening...';
+                        // Multiple shares - toggle dropdown with animation
+                        const dropdown = document.getElementById('openFolderDropdown');
+                        const button = document.getElementById('openFolderBtn');
+                        
+                        if (dropdown.classList.contains('show')) {
+                            // Hide dropdown
+                            hideDropdown();
+                        } else {
+                            // Position dropdown with enhanced edge-case handling
+                            positionAndShowDropdown(button);
                         }
-                    }
-                    
-                    // Open the selected share
-                    const openPromise = window.api.openInFinder(selectedShare.mountPoint);
-                    const timeoutPromise = new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('Operation timed out')), 10000); // 10 second timeout
-                    });
-                    
-                    await Promise.race([openPromise, timeoutPromise]);
-                    
-                    // Success - button will reset after short delay
-                    if (openButton) {
-                        const shareLabel = shares.length > 1 ? selectedShare.label : 'folder';
-                        openButton.textContent = `Opened ${shareLabel}!`;
-                        setTimeout(() => {
-                            openButton.textContent = originalText;
-                            openButton.disabled = false;
-                            openButton.style.opacity = '1';
-                        }, 1500);
                     }
                 } else {
                     alert('Service temporarily unavailable. Please restart the application.');
-                    if (openButton) {
-                        openButton.textContent = originalText;
-                        openButton.disabled = false;
-                        openButton.style.opacity = '1';
-                    }
                 }
             } catch (error) {
-                console.error('Error opening folder:', error);
+                console.error('Error in openFolder:', error);
+                alert('Failed to access mounted shares. Please try again.');
+            }
+        }
+        
+        // Open a specific share
+        async function openSpecificShare(share) {
+            const openButton = document.getElementById('openFolderBtn');
+            const dropdown = document.getElementById('openFolderDropdown');
+            const originalText = openButton.textContent;
+            
+            try {
+                // Hide dropdown with animation
+                hideDropdown();
                 
-                // Determine error type and show appropriate message
-                const errorMessage = error.message || 'Unknown error';
-                if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-                    alert('Network share is taking too long to respond. Check the system notifications for updates.');
-                } else if (errorMessage.includes('not responding') || errorMessage.includes('unreachable')) {
-                    alert('Network share is not accessible. Check your connection and try again.');
-                } else {
-                    alert('Failed to open folder. Please try again or check system notifications for details.');
-                }
+                // Show loading state
+                const displayName = share.label.length > 12 
+                    ? share.label.substring(0, 9) + '...' 
+                    : share.label;
+                openButton.textContent = `Opening ${displayName}...`;
+                openButton.disabled = true;
+                openButton.style.opacity = '0.6';
                 
-                // Reset button state
-                if (openButton) {
+                // Open the share with timeout
+                const openPromise = window.api.openInFinder(share.mountPoint);
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Operation timed out')), 10000);
+                });
+                
+                await Promise.race([openPromise, timeoutPromise]);
+                
+                // Success
+                openButton.textContent = `Opened ${displayName}!`;
+                setTimeout(() => {
                     openButton.textContent = originalText;
                     openButton.disabled = false;
                     openButton.style.opacity = '1';
+                }, 1500);
+                
+            } catch (error) {
+                console.error(`Error opening ${share.label}:`, error);
+                
+                const errorMessage = error.message || 'Unknown error';
+                if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+                    alert(`${share.label} is taking too long to respond. Check the system notifications for updates.`);
+                } else if (errorMessage.includes('not responding') || errorMessage.includes('unreachable')) {
+                    alert(`${share.label} is not accessible. Check your connection and try again.`);
+                } else {
+                    alert(`Failed to open ${share.label}. Please try again or check system notifications for details.`);
                 }
+                
+                // Reset button state
+                openButton.textContent = originalText;
+                openButton.disabled = false;
+                openButton.style.opacity = '1';
+            }
+        }
+        
+        // Open all shares
+        async function openAllShares() {
+            const openButton = document.getElementById('openFolderBtn');
+            const dropdown = document.getElementById('openFolderDropdown');
+            const originalText = openButton.textContent;
+            
+            try {
+                // Hide dropdown with animation
+                hideDropdown();
+                
+                // Show loading state
+                openButton.textContent = `Opening ${currentShares.length} shares...`;
+                openButton.disabled = true;
+                openButton.style.opacity = '0.6';
+                
+                let successCount = 0;
+                for (let i = 0; i < currentShares.length; i++) {
+                    const share = currentShares[i];
+                    
+                    // Update progress
+                    openButton.textContent = `Opening ${i + 1}/${currentShares.length}...`;
+                    
+                    try {
+                        const openPromise = window.api.openInFinder(share.mountPoint);
+                        const timeoutPromise = new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error('Operation timed out')), 8000);
+                        });
+                        
+                        await Promise.race([openPromise, timeoutPromise]);
+                        successCount++;
+                        
+                        // Small delay between opens to prevent system overload
+                        if (i < currentShares.length - 1) {
+                            await new Promise(resolve => setTimeout(resolve, 300));
+                        }
+                    } catch (error) {
+                        console.error(`Failed to open ${share.label}:`, error);
+                    }
+                }
+                
+                // Show result
+                if (successCount === currentShares.length) {
+                    openButton.textContent = `Opened all ${successCount} shares!`;
+                } else {
+                    openButton.textContent = `Opened ${successCount}/${currentShares.length} shares`;
+                }
+                
+                setTimeout(() => {
+                    openButton.textContent = originalText;
+                    openButton.disabled = false;
+                    openButton.style.opacity = '1';
+                }, 2500);
+                
+            } catch (error) {
+                console.error('Error opening all shares:', error);
+                alert('Failed to open some shares. Please try again.');
+                
+                // Reset button state
+                openButton.textContent = originalText;
+                openButton.disabled = false;
+                openButton.style.opacity = '1';
             }
         }
 
@@ -507,8 +1044,11 @@
             }
         }
 
-        // Refresh stats periodically
-        setInterval(updateStats, 10000); // Update every 10 seconds
+        // Refresh stats periodically and update open folder button (fallback)
+        setInterval(async () => {
+            await updateStats();
+            await updateOpenFolderButton();
+        }, 3000); // Update every 3 seconds as fallback
     </script>
 </body>
 </html>

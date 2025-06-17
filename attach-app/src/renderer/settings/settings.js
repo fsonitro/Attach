@@ -141,8 +141,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 connections.forEach(connection => {
                     const option = document.createElement('option');
                     option.value = connection.id;
-                    // Show connection details in a readable format
-                    option.textContent = `${connection.label} - ${connection.sharePath} (${connection.username})`;
+                    
+                    // Truncate long text to prevent dropdown expansion
+                    const maxLabelLength = 20;
+                    const maxSharePathLength = 25;
+                    const maxUsernameLength = 15;
+                    
+                    const truncatedLabel = connection.label.length > maxLabelLength 
+                        ? connection.label.substring(0, maxLabelLength - 3) + '...' 
+                        : connection.label;
+                    
+                    const truncatedSharePath = connection.sharePath.length > maxSharePathLength 
+                        ? connection.sharePath.substring(0, maxSharePathLength - 3) + '...' 
+                        : connection.sharePath;
+                    
+                    const truncatedUsername = connection.username.length > maxUsernameLength 
+                        ? connection.username.substring(0, maxUsernameLength - 3) + '...' 
+                        : connection.username;
+                    
+                    // Show connection details in a readable format with truncation
+                    option.textContent = `${truncatedLabel} - ${truncatedSharePath} (${truncatedUsername})`;
+                    option.title = `${connection.label} - ${connection.sharePath} (${connection.username})`; // Full text on hover
                     elements.viewSavedConnections.appendChild(option);
                 });
                 

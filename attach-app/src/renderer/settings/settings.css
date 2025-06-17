@@ -210,6 +210,8 @@ input:checked + .toggle-slider:hover {
 
 .path-input {
     min-width: 180px;
+    max-width: 300px;
+    width: 100%;
     padding: 4px 8px;
     border: 1px solid #d1d1d6;
     border-radius: 4px;
@@ -217,11 +219,16 @@ input:checked + .toggle-slider:hover {
     background-color: #f2f2f7;
     color: #1d1d1f;
     font-family: 'SF Mono', Monaco, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Connections dropdown - macOS Style */
 .connections-dropdown {
     min-width: 250px;
+    max-width: 350px;
+    width: 100%;
     padding: 4px 8px;
     border: 1px solid #d1d1d6;
     border-radius: 4px;
@@ -237,6 +244,9 @@ input:checked + .toggle-slider:hover {
     background-size: 10px 6px;
     padding-right: 24px;
     transition: all 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .connections-dropdown:focus {
@@ -255,6 +265,10 @@ input:checked + .toggle-slider:hover {
     background: #ffffff;
     color: #1d1d1f;
     padding: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .browse-btn {
@@ -544,6 +558,9 @@ input:checked + .toggle-slider:hover {
     background-color: #ffffff;
     color: #1d1d1f;
     transition: all 0.15s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .form-input:focus {
@@ -662,6 +679,7 @@ input:checked + .toggle-slider:hover {
     .path-input {
         flex: 1;
         min-width: unset;
+        max-width: none;
     }
     
     .settings-content {

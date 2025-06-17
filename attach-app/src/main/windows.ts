@@ -55,8 +55,8 @@ export const createMainWindow = () => {
     }
 
     mainWindow = new BrowserWindow({
-        width: 420,
-        height: 520,
+        width: 480,
+        height: 540,
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
@@ -66,7 +66,7 @@ export const createMainWindow = () => {
         },
         resizable: false, // Disable resizing since no maximize button
         frame: true, // Enable native frame with controls
-        transparent: false, // Disable transparency for native look
+        transparent: false, // Keep false for performance, use smart positioning instead
         titleBarStyle: 'default',
         show: false, // Start hidden for smooth entrance
         skipTaskbar: false,

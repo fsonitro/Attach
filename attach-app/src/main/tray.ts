@@ -1,5 +1,5 @@
 // src/main/tray.ts
-import { app, Tray, Menu, BrowserWindow, shell } from 'electron';
+import { app, Tray, Menu, BrowserWindow, shell, globalShortcut } from 'electron';
 import path from 'path';
 import { showMainWindow, createMountWindow, createSettingsWindow, createAboutWindow, quitApplication } from './windows';
 import { unmountSMBShare } from './mount/smbService';
@@ -10,6 +10,15 @@ let tray: Tray | null = null;
 let mountedShares: Map<string, any> = new Map(); // We'll update this from main process
 let currentNetworkStatus: NetworkStatus | null = null;
 let autoMountServiceRef: AutoMountService | null = null;
+
+// Pagination state for tray menu scroll
+let currentPage = 0;
+const sharesPerPage = 7;
+
+// Scroll wheel navigation state
+let scrollTimeout: NodeJS.Timeout | null = null;
+let isScrollingEnabled = true;
+let isContinuousNavigation = false; // Track if user is navigating pages continuously
 
 export function setAutoMountServiceReference(service: AutoMountService | null) {
     autoMountServiceRef = service;
@@ -32,10 +41,65 @@ export function createTray(mainWindow: BrowserWindow) {
 
     tray.setToolTip('Attach - Network Share Mounter');
 
-    // Tray icon click behavior is disabled - users must use the "Show App" menu option
-    // This prevents accidental window opening when clicking the tray icon
+    // Add scroll wheel event listener for pagination
+    tray.on('mouse-enter', () => {
+        // Reset any scroll timeout when mouse enters tray area
+        if (scrollTimeout) {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = null;
+        }
+    });
+
+    // Reset continuous navigation when menu is manually opened
+    tray.on('mouse-move', () => {
+        // Stop continuous navigation if user manually interacts
+        if (isContinuousNavigation) {
+            setTimeout(() => {
+                isContinuousNavigation = false;
+            }, 500);
+        }
+    });
+
+    // Handle right-click to show context menu with enhanced navigation
+    tray.on('right-click', () => {
+        // Update menu before showing to ensure current state
+        updateTrayMenu();
+        tray?.popUpContextMenu();
+    });
+
+    // Handle regular click for quick access to shares
+    tray.on('click', () => {
+        const shareCount = mountedShares.size;
+        
+        if (shareCount === 0) {
+            // No shares - show main window
+            showMainWindow();
+        } else if (shareCount === 1) {
+            // Single share - open it directly
+            const firstShare = Array.from(mountedShares.values())[0];
+            openSpecificShare(firstShare);
+        } else {
+            // Multiple shares - show context menu for selection
+            updateTrayMenu();
+            tray?.popUpContextMenu();
+        }
+    });
+
+    // Set up global keyboard shortcuts for tray navigation
+    setupTrayNavigationShortcuts();
 
     return tray;
+}
+
+/**
+ * Destroy tray and cleanup resources
+ */
+export function destroyTray(): void {
+    if (tray) {
+        cleanupTrayNavigationShortcuts();
+        tray.destroy();
+        tray = null;
+    }
 }
 
 /**
@@ -48,7 +112,7 @@ export function updateTrayNetworkStatus(networkStatus: NetworkStatus) {
 }
 
 /**
- * Update tray tooltip with network status
+ * Update tray tooltip with network status and navigation hints
  */
 function updateTrayTooltip() {
     if (!tray || !currentNetworkStatus) return;
@@ -68,6 +132,12 @@ function updateTrayTooltip() {
     
     if (mountedShares.size > 0) {
         tooltip += `\n📁 ${mountedShares.size} share${mountedShares.size > 1 ? 's' : ''} mounted`;
+        
+        if (mountedShares.size > sharesPerPage) {
+            const totalPages = Math.ceil(mountedShares.size / sharesPerPage);
+            tooltip += `\n📄 Page ${currentPage + 1} of ${totalPages}`;
+            tooltip += '\n⌨️ Ctrl+Shift+↑/↓ to navigate';
+        }
     }
     
     tray.setToolTip(tooltip);
@@ -92,6 +162,16 @@ function getNetworkStatusLabel(): string {
 }
 
 /**
+ * Truncate text for tray menu display
+ */
+function truncateTextForTray(text: string, maxLength: number = 25): string {
+    if (text.length <= maxLength) {
+        return text;
+    }
+    return text.substring(0, maxLength - 3) + '...';
+}
+
+/**
  * Get smart label for "Open Folder" based on network and mount status
  */
 function getOpenFolderLabel(): string {
@@ -100,13 +180,18 @@ function getOpenFolderLabel(): string {
     }
     
     if (mountedShares.size === 1) {
-        // Single share - show direct action
+        // Single share - show direct action with truncated name
         const shareLabel = Array.from(mountedShares.keys())[0];
-        return `Open Folder (${shareLabel})`;
+        const truncatedLabel = truncateTextForTray(shareLabel, 20); // Shorter for single item
+        return `Open Folder (${truncatedLabel})`;
     }
     
-    // Multiple shares - will be handled by submenu
-    return 'Open Folder';
+    // Multiple shares - show count and indicate if there are many
+    if (mountedShares.size > 20) {
+        return `Open Folder (${mountedShares.size} shares)`;
+    } else {
+        return 'Open Folder';
+    }
 }
 
 /**
@@ -119,6 +204,7 @@ function isOpenFolderSafe(): boolean {
 
 /**
  * Create submenu for opening folders when multiple shares are mounted
+ * Implements scroll-like pagination with 7 shares per page and intuitive navigation
  */
 function createOpenFolderSubmenu(): any[] {
     if (mountedShares.size <= 1) {
@@ -126,36 +212,120 @@ function createOpenFolderSubmenu(): any[] {
     }
     
     const submenu: any[] = [];
+    const allShares = Array.from(mountedShares.values());
+    const totalShares = allShares.length;
+    const totalPages = Math.ceil(totalShares / sharesPerPage);
     
-    // Add option for each mounted share
-    Array.from(mountedShares.values()).forEach(share => {
+    // Ensure current page is within bounds
+    if (currentPage >= totalPages) {
+        currentPage = 0;
+    }
+    if (currentPage < 0) {
+        currentPage = totalPages - 1;
+    }
+    
+    // Add "Open All" option at the top
+    if (mountedShares.size > 1) {
         submenu.push({
-            label: `📁 ${share.label}`,
+            label: `📂 Open All (${totalShares})`,
+            toolTip: `Open all ${totalShares} mounted shares`,
             click: async () => {
+                // Stop continuous navigation when user selects Open All
+                isContinuousNavigation = false;
+                for (const share of mountedShares.values()) {
+                    try {
+                        await openSpecificShare(share);
+                        // Small delay between opens to prevent system overload
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    } catch (error) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.error(`Failed to open ${share.label}:`, error);
+                        }
+                    }
+                }
+            }
+        });
+        
+        submenu.push({ type: 'separator' });
+    }
+    
+    // If there are more than 7 shares, show scroll-like navigation
+    if (totalShares > sharesPerPage) {
+        // Add scroll navigation info with visual indicators
+        const scrollIndicator = '●'.repeat(Math.min(totalPages, 5));
+        const currentIndicator = scrollIndicator.split('').map((dot, index) => 
+            index === currentPage % 5 ? '◉' : '○'
+        ).join('');
+        
+        submenu.push({
+            label: `� Shares ${currentPage * sharesPerPage + 1}-${Math.min((currentPage + 1) * sharesPerPage, totalShares)} of ${totalShares}`,
+            enabled: false
+        });
+        
+        submenu.push({
+            label: `${currentIndicator} Page ${currentPage + 1}/${totalPages}`,
+            enabled: false
+        });
+        
+        // Add simple navigation arrows
+        submenu.push({
+            label: currentPage > 0 ? '◀ Previous Page' : '◀ Previous (go to last)',
+            click: () => {
+                scrollToPreviousPage();
+            }
+        });
+        
+        submenu.push({
+            label: currentPage < totalPages - 1 ? 'Next Page ▶' : 'Next (go to first) ▶',
+            click: () => {
+                scrollToNextPage();
+            }
+        });
+        
+        submenu.push({ type: 'separator' });
+    }
+    
+    // Calculate which shares to show on current page
+    const startIndex = currentPage * sharesPerPage;
+    const endIndex = Math.min(startIndex + sharesPerPage, totalShares);
+    const currentPageShares = allShares.slice(startIndex, endIndex);
+    
+    // Add current page shares with improved visual hierarchy
+    currentPageShares.forEach((share, index) => {
+        const globalIndex = startIndex + index + 1;
+        const truncatedLabel = truncateTextForTray(share.label, 25);
+        
+        // Use different icons for visual variety and better recognition
+        const icons = ['📁', '📂', '🗂️', '📋', '📄'];
+        const icon = icons[index % icons.length];
+        
+        const displayLabel = totalShares > sharesPerPage 
+            ? `${icon} ${globalIndex}. ${truncatedLabel}` 
+            : `${icon} ${truncatedLabel}`;
+            
+        submenu.push({
+            label: displayLabel,
+            toolTip: `${share.label} (${share.sharePath})`,
+            click: async () => {
+                // Stop continuous navigation when user selects a share
+                isContinuousNavigation = false;
                 await openSpecificShare(share);
             }
         });
     });
     
-    // Add separator and "Open All" option if more than one share
-    if (mountedShares.size > 1) {
-        submenu.push(
-            { type: 'separator' },
-            {
-                label: '📂 Open All Shares',
-                click: async () => {
-                    for (const share of mountedShares.values()) {
-                        try {
-                            await openSpecificShare(share);
-                        } catch (error) {
-                            if (process.env.NODE_ENV === 'development') {
-                                console.error(`Failed to open ${share.label}:`, error);
-                            }
-                        }
-                    }
-                }
+    // Add convenience options for large lists
+    if (totalPages > 2) {
+        submenu.push({ type: 'separator' });
+        submenu.push({
+            label: '🔍 View All in Main Window',
+            toolTip: 'Open main window to see all shares at once',
+            click: () => {
+                // Stop continuous navigation when user opens main window
+                isContinuousNavigation = false;
+                showMainWindow();
             }
-        );
+        });
     }
     
     return submenu;
@@ -267,32 +437,39 @@ export function updateTrayMenu(shares?: Map<string, any>) {
     }
 
     // Build mounted drives submenu - simplified to only show drive names and unmount option
-    const mountedDrivesSubmenu: any[] = Array.from(mountedShares.values()).map(share => ({
-        label: `${share.label} (${share.sharePath})`,
-        submenu: [
-            {
-                label: `Unmount ${share.label}`,
-                click: async () => {
-                    try {
-                        // Call the unmount function directly
-                        await unmountSMBShare(share.mountPoint);
-                        mountedShares.delete(share.label);
-                        
-                        // Update tray menu
-                        updateTrayMenu(mountedShares);
-                        
-                        if (process.env.NODE_ENV === 'development') {
-                            console.log(`Successfully unmounted ${share.label}`);
-                        }
-                    } catch (error) {
-                        if (process.env.NODE_ENV === 'development') {
-                            console.error(`Failed to unmount ${share.label}:`, error);
+    const mountedDrivesSubmenu: any[] = Array.from(mountedShares.values()).map(share => {
+        const truncatedLabel = truncateTextForTray(share.label, 25);
+        const truncatedSharePath = truncateTextForTray(share.sharePath, 35);
+        
+        return {
+            label: `${truncatedLabel} (${truncatedSharePath})`,
+            toolTip: `${share.label} (${share.sharePath})`, // Full details on hover
+            submenu: [
+                {
+                    label: `Unmount ${truncatedLabel}`,
+                    toolTip: `Unmount ${share.label}`,
+                    click: async () => {
+                        try {
+                            // Call the unmount function directly
+                            await unmountSMBShare(share.mountPoint);
+                            mountedShares.delete(share.label);
+                            
+                            // Update tray menu
+                            updateTrayMenu(mountedShares);
+                            
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`Successfully unmounted ${share.label}`);
+                            }
+                        } catch (error) {
+                            if (process.env.NODE_ENV === 'development') {
+                                console.error(`Failed to unmount ${share.label}:`, error);
+                            }
                         }
                     }
                 }
-            }
-        ]
-    }));
+            ]
+        };
+    });
 
     // If no mounted drives, show empty message
     if (mountedDrivesSubmenu.length === 0) {
@@ -404,6 +581,37 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                 createAboutWindow();
             }
         },
+        {
+            label: 'Keyboard Shortcuts',
+            submenu: [
+                {
+                    label: '⌨️ Tray Navigation',
+                    enabled: false
+                },
+                {
+                    label: 'Ctrl+Shift+↑  Previous Page',
+                    enabled: mountedShares.size > sharesPerPage,
+                    click: () => scrollToPreviousPage()
+                },
+                {
+                    label: 'Ctrl+Shift+↓  Next Page',
+                    enabled: mountedShares.size > sharesPerPage,
+                    click: () => scrollToNextPage()
+                },
+                {
+                    label: 'Ctrl+Shift+O  Open First Share',
+                    enabled: mountedShares.size > 0,
+                    click: () => {
+                        const allShares = Array.from(mountedShares.values());
+                        const startIndex = currentPage * sharesPerPage;
+                        const firstShareOnPage = allShares[startIndex];
+                        if (firstShareOnPage) {
+                            openSpecificShare(firstShareOnPage);
+                        }
+                    }
+                }
+            ]
+        },
         { type: 'separator' },
         {
             label: 'Quit',
@@ -414,4 +622,140 @@ export function updateTrayMenu(shares?: Map<string, any>) {
     ]);
 
     tray.setContextMenu(contextMenu);
+}
+
+/**
+ * Scroll to previous page in tray menu (scroll-like navigation)
+ * Automatically reopens tray menu for continuous navigation
+ */
+function scrollToPreviousPage(): void {
+    if (!isScrollingEnabled) return;
+    
+    const totalShares = mountedShares.size;
+    const totalPages = Math.ceil(totalShares / sharesPerPage);
+    
+    if (totalPages <= 1) return;
+    
+    // Smooth scroll behavior: go to previous page or wrap to last
+    currentPage = currentPage > 0 ? currentPage - 1 : totalPages - 1;
+    
+    // Mark as continuous navigation
+    isContinuousNavigation = true;
+    
+    // Debounce rapid scrolling
+    isScrollingEnabled = false;
+    updateTrayMenu(mountedShares);
+    
+    // Automatically reopen tray menu after a brief delay for continuous navigation
+    setTimeout(() => {
+        if (tray && isContinuousNavigation) {
+            tray.popUpContextMenu();
+        }
+        isScrollingEnabled = true;
+    }, 250); // Optimized delay for smooth reopening
+    
+    // Reset continuous navigation after a longer delay
+    setTimeout(() => {
+        isContinuousNavigation = false;
+    }, 2000); // Reset after 2 seconds of inactivity
+}
+
+/**
+ * Scroll to next page in tray menu (scroll-like navigation)
+ * Automatically reopens tray menu for continuous navigation
+ */
+function scrollToNextPage(): void {
+    if (!isScrollingEnabled) return;
+    
+    const totalShares = mountedShares.size;
+    const totalPages = Math.ceil(totalShares / sharesPerPage);
+    
+    if (totalPages <= 1) return;
+    
+    // Smooth scroll behavior: go to next page or wrap to first
+    currentPage = currentPage < totalPages - 1 ? currentPage + 1 : 0;
+    
+    // Mark as continuous navigation
+    isContinuousNavigation = true;
+    
+    // Debounce rapid scrolling
+    isScrollingEnabled = false;
+    updateTrayMenu(mountedShares);
+    
+    // Automatically reopen tray menu after a brief delay for continuous navigation
+    setTimeout(() => {
+        if (tray && isContinuousNavigation) {
+            tray.popUpContextMenu();
+        }
+        isScrollingEnabled = true;
+    }, 250); // Optimized delay for smooth reopening
+    
+    // Reset continuous navigation after a longer delay
+    setTimeout(() => {
+        isContinuousNavigation = false;
+    }, 2000); // Reset after 2 seconds of inactivity
+}
+
+/**
+ * Set up global keyboard shortcuts for tray navigation
+ * This provides scroll-like navigation accessible system-wide
+ */
+function setupTrayNavigationShortcuts(): void {
+    try {
+        // Register global shortcuts for tray navigation
+        // These work even when the app is not focused
+        
+        // Ctrl+Shift+Up - Previous page in tray shares
+        globalShortcut.register('CommandOrControl+Shift+Up', () => {
+            if (mountedShares.size > sharesPerPage) {
+                scrollToPreviousPage();
+            }
+        });
+        
+        // Ctrl+Shift+Down - Next page in tray shares
+        globalShortcut.register('CommandOrControl+Shift+Down', () => {
+            if (mountedShares.size > sharesPerPage) {
+                scrollToNextPage();
+            }
+        });
+        
+        // Ctrl+Shift+O - Open current page's first share
+        globalShortcut.register('CommandOrControl+Shift+O', () => {
+            if (mountedShares.size > 0) {
+                const allShares = Array.from(mountedShares.values());
+                const startIndex = currentPage * sharesPerPage;
+                const firstShareOnPage = allShares[startIndex];
+                if (firstShareOnPage) {
+                    openSpecificShare(firstShareOnPage);
+                }
+            }
+        });
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log('✅ Tray navigation shortcuts registered');
+        }
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Failed to register tray navigation shortcuts:', error);
+        }
+    }
+}
+
+/**
+ * Clean up global shortcuts when tray is destroyed
+ */
+function cleanupTrayNavigationShortcuts(): void {
+    try {
+        globalShortcut.unregister('CommandOrControl+Shift+Up');
+        globalShortcut.unregister('CommandOrControl+Shift+Down');
+        globalShortcut.unregister('CommandOrControl+Shift+O');
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log('✅ Tray navigation shortcuts cleaned up');
+        }
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Failed to cleanup tray navigation shortcuts:', error);
+        }
+    }
 }

@@ -98,4 +98,9 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.invoke('get-share-monitoring-stats'),
     toggleShareMonitoring: (enable: boolean) =>
         ipcRenderer.invoke('toggle-share-monitoring', enable),
+    
+    // Event listeners
+    onSharesChanged: (callback: (shares: any[]) => void) => {
+        ipcRenderer.on('shares-changed', (event, shares) => callback(shares));
+    },
 });

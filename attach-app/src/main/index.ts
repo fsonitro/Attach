@@ -26,6 +26,21 @@ let isQuitting = false;
 let isAutoMountInProgress = false;
 let pendingAutoMountTriggers: Set<'startup' | 'network' | 'wake' | 'manual'> = new Set();
 
+// Function to notify all windows when shares change
+function notifySharesChanged() {
+    const sharesList = Array.from(mountedShares.values());
+    
+    // Notify main window if it exists
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('shares-changed', sharesList);
+    }
+    
+    // Can add other windows here if needed
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`📢 Notified windows of share changes. Current shares: ${sharesList.length}`);
+    }
+}
+
 // Function to validate and refresh mounted shares
 async function refreshMountedShares() {
     try {
@@ -49,6 +64,10 @@ async function refreshMountedShares() {
         // Update tray menu if any shares were disconnected
         if (disconnectedShares.length > 0) {
             updateTrayMenu(mountedShares);
+            
+            // Notify windows of share changes
+            notifySharesChanged();
+            
             if (process.env.NODE_ENV === 'development') {
                 console.log(`Updated tray menu after removing ${disconnectedShares.length} disconnected shares`);
             }
@@ -493,6 +512,9 @@ function setupIpcHandlers() {
             // Update tray menu with new shares
             updateTrayMenu(mountedShares);
             
+            // Notify windows of share changes
+            notifySharesChanged();
+            
             if (process.env.NODE_ENV === 'development') {
                 console.log(`Successfully mounted ${sharePath} at ${mountPoint}`);
             }
@@ -536,6 +558,9 @@ function setupIpcHandlers() {
             
             // Update tray menu
             updateTrayMenu(mountedShares);
+            
+            // Notify windows of share changes
+            notifySharesChanged();
 
             return {
                 success: true,
@@ -581,6 +606,9 @@ function setupIpcHandlers() {
 
         // Update tray menu after unmounting all
         updateTrayMenu(mountedShares);
+        
+        // Notify windows of share changes
+        notifySharesChanged();
 
         return {
             success: overallSuccess,
@@ -1033,6 +1061,9 @@ function setupIpcHandlers() {
                 
                 // Update tray menu
                 updateTrayMenu(mountedShares);
+                
+                // Notify windows of share changes
+                notifySharesChanged();
             }
             
             return result;
