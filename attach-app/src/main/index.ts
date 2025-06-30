@@ -106,11 +106,34 @@ app.whenReady().then(async () => {
     
     // Set up event listeners for network watcher
     if (networkWatcher) {
+        // **NEW: VPN status monitoring and event handling**
+        networkWatcher.on('vpn-connected', async (vpnStatus) => {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔒 VPN Connected: ${vpnStatus.connectionName}`);
+            }
+            
+            // Trigger auto-mount when VPN connects (shares might now be accessible)
+            await handleEnhancedAutoMount('network');
+        });
+        
+        networkWatcher.on('vpn-disconnected', (vpnStatus) => {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`🔓 VPN Disconnected: ${vpnStatus.connectionName}`);
+            }
+            
+            // VPN disconnection might cause shares to become inaccessible
+            // The share validation will handle cleanup
+        });
+        
         // Enhanced network status monitoring with tray updates
         networkWatcher.on('network-status-changed', (status) => {
             updateTrayNetworkStatus(status);
             if (process.env.NODE_ENV === 'development') {
-                console.log('📊 Network status:', status);
+                console.log('📊 Network status:', {
+                    online: status.isOnline,
+                    internet: status.hasInternet,
+                    vpn: status.vpnStatus.isConnected ? `Connected (${status.vpnStatus.connectionName})` : 'Disconnected'
+                });
             }
         });
         
@@ -249,73 +272,167 @@ function setupPowerMonitoring(): void {
         console.log('🔌 Setting up power monitoring for sleep/wake detection...');
     }
 
-    // System sleep detection
+    // System sleep detection - IMPROVED VERSION
     powerMonitor.on('suspend', async () => {
         if (process.env.NODE_ENV === 'development') {
             console.log('💤 System going to sleep - preparing shares for disconnection');
         }
+        
+        // **FIXED: Prevent auto-mount during sleep preparation**
+        isAutoMountInProgress = true;
         
         // Gracefully disconnect shares before sleep to prevent hanging
         if (mountedShares.size > 0) {
             const shareLabels = Array.from(mountedShares.keys());
             if (process.env.NODE_ENV === 'development') {
                 console.log(`💤 Disconnecting ${shareLabels.length} shares before sleep`);
-            }                // Add disconnected shares to retry queue for wake reconnection
-                for (const [label, share] of mountedShares.entries()) {
-                    try {
-                        // Find the connection for this share to add to retry queue
+            }
+            
+            const preSleepMounts = new Map(mountedShares); // Backup for wake validation
+            const unmountResults = new Map<string, boolean>();
+            
+            for (const [label, share] of preSleepMounts.entries()) {
+                try {
+                    // **IMPROVED: Validate unmount success before adding to retry queue**
+                    await unmountSMBShare(share.mountPoint);
+                    
+                    // Verify the unmount actually worked
+                    const { isMountPoint } = await import('./mount/smbService');
+                    const stillMounted = await isMountPoint(share.mountPoint);
+                    
+                    if (!stillMounted) {
+                        // Successfully unmounted
+                        mountedShares.delete(label);
+                        unmountResults.set(label, true);
+                        
+                        // Only add to retry queue if actually unmounted
                         const connections = await connectionStore.getAutoMountConnections();
                         const connection = connections.find((c: SavedConnection) => 
                             c.sharePath === share.sharePath && 
                             c.username === share.username && 
                             c.autoMount
                         );
-                    
-                    if (connection && networkWatcher) {
-                        networkWatcher.getShareMonitoringService().addToRetryQueue(connection);
+                        
+                        if (connection && networkWatcher) {
+                            networkWatcher.getShareMonitoringService().addToRetryQueue(connection);
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`✅ ${label} unmounted successfully, added to retry queue`);
+                            }
+                        }
+                    } else {
+                        // Unmount failed - don't add to retry queue to prevent duplicates
+                        unmountResults.set(label, false);
+                        if (process.env.NODE_ENV === 'development') {
+                            console.warn(`⚠️ ${label} unmount failed - keeping in tracking, NOT adding to retry queue`);
+                        }
                     }
                     
-                    // Safely unmount
-                    await unmountSMBShare(share.mountPoint);
-                    mountedShares.delete(label);
                 } catch (error) {
-                    // Force remove from tracking even if unmount fails
-                    mountedShares.delete(label);
+                    // Unmount failed - don't remove from tracking or add to retry queue
+                    unmountResults.set(label, false);
                     if (process.env.NODE_ENV === 'development') {
-                        console.warn(`Failed to unmount ${label} before sleep:`, error);
+                        console.warn(`❌ Failed to unmount ${label} before sleep:`, error);
+                        console.warn(`   Keeping in tracking to prevent duplicates on wake`);
                     }
                 }
             }
             
+            // Summary logging
+            const successful = Array.from(unmountResults.values()).filter(Boolean).length;
+            const failed = unmountResults.size - successful;
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`💤 Sleep preparation: ${successful} unmounted, ${failed} failed/still mounted`);
+            }
+            
             updateTrayMenu(mountedShares);
+        }
+        
+        // **NEW: Store sleep state to prevent wake race conditions**
+        if (process.env.NODE_ENV === 'development') {
+            console.log('💤 System sleep preparation complete');
         }
     });
 
-    // System wake detection
+    // System wake detection - IMPROVED VERSION
     powerMonitor.on('resume', async () => {
         if (process.env.NODE_ENV === 'development') {
-            console.log('🌅 System waking up - initiating auto-mount recovery');
+            console.log('🌅 System waking up - initiating enhanced auto-mount recovery');
         }
         
-        // Wait a bit for network to stabilize
+        // **IMPROVED: Extended delay and comprehensive cleanup before auto-mount**
         setTimeout(async () => {
             try {
-                // Force network status refresh
-                if (networkWatcher) {
-                    await networkWatcher.refreshNetworkStatus();
-                    
-                    // Trigger auto-mount for shares that should be reconnected
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log('🔄 Triggering post-wake auto-mount...');
-                    }
-                    await handleNetworkReconnectionAutoMount();
+                // **NEW: Reset auto-mount lock after sleep (in case it got stuck)**
+                isAutoMountInProgress = false;
+                pendingAutoMountTriggers.clear();
+                
+                // **ENHANCED: Comprehensive system cleanup before auto-mount**
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('🧹 Performing post-wake system cleanup...');
                 }
+                
+                // Clean up any stale system mounts that may have survived sleep
+                if (autoMountService) {
+                    const systemCleanup = await autoMountService.cleanupAllStaleMounts();
+                    if (systemCleanup.totalCleaned > 0 && process.env.NODE_ENV === 'development') {
+                        console.log(`✅ Post-wake cleanup: removed ${systemCleanup.totalCleaned} stale system mounts`);
+                    }
+                }
+                
+                // **NEW: Enhanced validation of currently tracked mounts**
+                if (mountedShares.size > 0) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`🔍 Validating ${mountedShares.size} tracked mounts after wake...`);
+                    }
+                    
+                    // Use comprehensive validation that checks both accessibility and mount status
+                    await refreshMountedShares();
+                    
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`📊 After validation: ${mountedShares.size} shares still valid`);
+                    }
+                }
+                
+                // Force network status refresh with extended timeout for post-wake networking
+                if (networkWatcher) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('🌐 Refreshing network status after wake...');
+                    }
+                    
+                    const status = await networkWatcher.checkNetworkStatus();
+                    
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`🌐 Post-wake network status: online=${status.isOnline}, internet=${status.hasInternet}`);
+                    }
+                    
+                    // Only trigger auto-mount if network is ready and we have connections to mount
+                    if (status.isOnline && status.hasInternet) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log('🔄 Network ready - triggering post-wake auto-mount...');
+                        }
+                        await handleEnhancedAutoMount('wake');
+                    } else {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log('⚠️ Network not ready after wake, auto-mount will be triggered when network comes online');
+                        }
+                    }
+                } else {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('⚠️ NetworkWatcher not available, triggering auto-mount anyway...');
+                    }
+                    await handleEnhancedAutoMount('wake');
+                }
+                
             } catch (error) {
                 if (process.env.NODE_ENV === 'development') {
-                    console.error('Error during post-wake auto-mount:', error);
+                    console.error('❌ Error during post-wake auto-mount recovery:', error);
                 }
+                
+                // **NEW: Reset locks even if error occurs to prevent permanent blocking**
+                isAutoMountInProgress = false;
+                pendingAutoMountTriggers.clear();
             }
-        }, 3000); // 3 second delay for network stabilization
+        }, 5000); // **INCREASED: 5 second delay for better network stabilization**
     });
 
     // System lock/unlock detection (macOS specific)

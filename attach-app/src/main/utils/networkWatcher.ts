@@ -9,14 +9,16 @@ import * as https from 'https';
 import { connectionStore, SavedConnection } from './connectionStore';
 import { MountedShare } from '../../types';
 import { createShareMonitoringService, ShareMonitoringService } from './shareMonitoringService';
-import { customNetworkCheck } from './networkUtils';
+import { customNetworkCheck, detectVPNStatus, VPNStatus } from './networkUtils';
 import { 
     notifyNetworkDisconnected, 
     notifyNetworkReconnected, 
     notifyInternetLost, 
     notifyInternetRestored,
     notifyNetworkChanged,
-    notifySharesDisconnected 
+    notifySharesDisconnected,
+    notifyVPNConnected,
+    notifyVPNDisconnected
 } from './essentialNotifications';
 
 const execPromise = promisify(exec);
@@ -35,6 +37,7 @@ export interface NetworkStatus {
     isOnline: boolean;
     hasInternet: boolean;
     networkId: string | null; // To detect network changes
+    vpnStatus: VPNStatus; // **NEW: VPN status tracking**
     lastChecked: Date;
 }
 
@@ -53,6 +56,7 @@ export class NetworkWatcher extends EventEmitter {
             isOnline: false,
             hasInternet: false,
             networkId: null,
+            vpnStatus: { isConnected: false, lastChecked: new Date() },
             lastChecked: new Date()
         };
     }
@@ -110,10 +114,14 @@ export class NetworkWatcher extends EventEmitter {
             const hasInternet = isOnline ? await this.hasInternetConnectivity() : false;
             const networkId = await this.getCurrentNetworkId();
             
+            // **NEW: VPN status check**
+            const vpnStatus = await detectVPNStatus();
+            
             this.currentNetworkStatus = {
                 isOnline,
                 hasInternet,
                 networkId,
+                vpnStatus,
                 lastChecked: new Date()
             };
             
@@ -129,6 +137,7 @@ export class NetworkWatcher extends EventEmitter {
                 isOnline: false,
                 hasInternet: false,
                 networkId: null,
+                vpnStatus: { isConnected: false, lastChecked: new Date() },
                 lastChecked: new Date()
             };
         }
@@ -207,12 +216,44 @@ export class NetworkWatcher extends EventEmitter {
 
     /**
      * Handle network state changes and trigger essential notifications
+     * **ENHANCED: Now includes VPN status change detection**
      */
     private async handleNetworkStateChanges(): Promise<void> {
         if (!this.previousNetworkStatus) return;
 
         const prev = this.previousNetworkStatus;
         const curr = this.currentNetworkStatus;
+
+        // **NEW: VPN status change detection**
+        if (prev.vpnStatus.isConnected !== curr.vpnStatus.isConnected) {
+            if (curr.vpnStatus.isConnected) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔒 VPN Connected: ${curr.vpnStatus.connectionName || 'Unknown VPN'}`);
+                }
+                
+                // Notify user about VPN connection
+                await notifyVPNConnected(curr.vpnStatus.connectionName || 'VPN');
+                
+                this.emit('vpn-connected', curr.vpnStatus);
+                
+                // Trigger auto-mount when VPN connects
+                this.emit('auto-mount-requested');
+            } else {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔓 VPN Disconnected: ${prev.vpnStatus.connectionName || 'Unknown VPN'}`);
+                }
+                
+                // Notify user about VPN disconnection
+                await notifyVPNDisconnected(prev.vpnStatus.connectionName || 'VPN');
+                
+                this.emit('vpn-disconnected', prev.vpnStatus);
+                
+                // If shares were connected via VPN, notify about potential disconnection
+                if (this.mountedShares.size > 0) {
+                    await notifySharesDisconnected(this.mountedShares.size);
+                }
+            }
+        }
 
         // Network disconnection
         if (prev.isOnline && !curr.isOnline) {
@@ -336,8 +377,38 @@ export class NetworkWatcher extends EventEmitter {
         // Do nothing - no retry logic
     }
 
+    // **ENHANCED: Force refresh network status** - Used after sleep/wake cycles  
     async refreshNetworkStatus(): Promise<NetworkStatus> {
-        return await this.checkNetworkStatus();
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🔄 Force refreshing network status...');
+        }
+        
+        try {
+            // Force a fresh check regardless of timing
+            const newStatus = await this.checkNetworkStatus();
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log('🔄 Network status refreshed:', newStatus);
+            }
+            
+            return newStatus;
+        } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+                console.warn('Failed to refresh network status:', error);
+            }
+            
+            // Return offline status on error
+            const errorStatus: NetworkStatus = {
+                isOnline: false,
+                hasInternet: false,
+                networkId: null,
+                vpnStatus: { isConnected: false, lastChecked: new Date() },
+                lastChecked: new Date()
+            };
+            
+            this.currentNetworkStatus = errorStatus;
+            return errorStatus;
+        }
     }
 
     async forceShareReconnection(label: string): Promise<void> {
@@ -353,8 +424,9 @@ export class NetworkWatcher extends EventEmitter {
         };
     }
 
-    getVPNStatus(): { isConnected: boolean; lastChecked: Date } {
-        return { isConnected: false, lastChecked: new Date() };
+    // **ENHANCED: Return actual VPN status from current network status**
+    getVPNStatus(): VPNStatus {
+        return this.currentNetworkStatus.vpnStatus;
     }
 }
 

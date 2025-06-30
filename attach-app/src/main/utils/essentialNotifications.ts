@@ -143,6 +143,33 @@ class EssentialNotificationManager {
             urgency: 'normal'
         });
     }
+
+    /**
+     * **NEW: VPN connection notifications**
+     */
+    async notifyVPNConnected(vpnName: string): Promise<void> {
+        await this.showNotification({
+            title: 'VPN Connected',
+            body: `${vpnName} is now connected. Network shares should be accessible.`,
+            urgency: 'normal'
+        });
+    }
+
+    async notifyVPNDisconnected(vpnName: string): Promise<void> {
+        await this.showNotification({
+            title: 'VPN Disconnected',
+            body: `${vpnName} has disconnected. Network shares may no longer be accessible.`,
+            urgency: 'normal'
+        });
+    }
+
+    async notifyVPNRequired(): Promise<void> {
+        await this.showNotification({
+            title: 'VPN Connection Required',
+            body: 'Cannot connect to network shares. Please connect to VPN and try again.',
+            urgency: 'critical'
+        });
+    }
 }
 
 // Export singleton instance
@@ -158,3 +185,6 @@ export const notifySharesDisconnected = (count: number) => essentialNotification
 export const notifySharesReconnected = (count: number) => essentialNotifications.notifySharesReconnected(count);
 export const notifyMountConflictsResolved = (count: number) => essentialNotifications.notifyMountConflictsResolved(count);
 export const notifyFinderConflictsResolved = (count: number) => essentialNotifications.notifyFinderConflictsResolved(count);
+export const notifyVPNConnected = (vpnName: string) => essentialNotifications.notifyVPNConnected(vpnName);
+export const notifyVPNDisconnected = (vpnName: string) => essentialNotifications.notifyVPNDisconnected(vpnName);
+export const notifyVPNRequired = () => essentialNotifications.notifyVPNRequired();

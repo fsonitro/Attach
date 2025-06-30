@@ -86,7 +86,9 @@ export class AutoMountService {
      */
     private async mountConnectionWithCoordination(connection: SavedConnection, trigger: string): Promise<AutoMountResult> {
         try {
-            // Check if connection is already mounted by the app (synchronous check)
+            // **ENHANCED: Check multiple mount status indicators to prevent duplicates**
+            
+            // 1. Check if connection is already mounted by the app (synchronous check)
             if (this.isConnectionMounted(connection)) {
                 if (process.env.NODE_ENV === 'development') {
                     console.log(`⚠️ Connection ${connection.label} is already mounted by the app, skipping`);
@@ -96,6 +98,64 @@ export class AutoMountService {
                     success: true,
                     mountPoint: this.getMountPointForConnection(connection)
                 };
+            }
+            
+            // **NEW: 2. Enhanced system mount check to prevent duplicates after sleep/wake**
+            const isAlreadyMountedSystem = await this.isConnectionMountedEnhanced(connection);
+            if (isAlreadyMountedSystem) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`⚠️ Connection ${connection.label} is already mounted in system, checking accessibility...`);
+                }
+                
+                // Try to find the existing system mount and validate it
+                const systemMounts = await detectSystemSMBMounts();
+                const normalizedSharePath = connection.sharePath.replace(/^smb:\/\//, '').replace(/^\/\//, '').toLowerCase();
+                
+                const existingMount = systemMounts.find(mount => {
+                    const mountPath = mount.serverPath.toLowerCase();
+                    return mountPath === normalizedSharePath || 
+                           mountPath.replace(/^[^@]+@/, '') === normalizedSharePath ||
+                           mountPath === `${require('os').userInfo().username}@${normalizedSharePath}`;
+                });
+                
+                if (existingMount) {
+                    // Check if the existing mount is accessible
+                    const { isMountPointAccessible } = await import('../mount/smbService');
+                    const isAccessible = await isMountPointAccessible(existingMount.mountPoint);
+                    
+                    if (isAccessible) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`✅ Found accessible existing mount for ${connection.label} at ${existingMount.mountPoint}`);
+                        }
+                        
+                        // Add to our tracking if it's not already there
+                        if (!this.isConnectionMounted(connection)) {
+                            const mountedShare: MountedShare = {
+                                label: connection.label,
+                                mountPoint: existingMount.mountPoint,
+                                sharePath: connection.sharePath,
+                                username: connection.username,
+                                mountedAt: new Date()
+                            };
+                            this.mountedShares.set(connection.label, mountedShare);
+                            
+                            if (process.env.NODE_ENV === 'development') {
+                                console.log(`📋 Added existing system mount to app tracking: ${connection.label}`);
+                            }
+                        }
+                        
+                        return {
+                            connection,
+                            success: true,
+                            mountPoint: existingMount.mountPoint
+                        };
+                    } else {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`💀 Found stale system mount for ${connection.label}, will clean up and remount`);
+                        }
+                        // Continue with normal mount process - the conflict resolution will handle cleanup
+                    }
+                }
             }
 
             if (process.env.NODE_ENV === 'development') {

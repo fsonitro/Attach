@@ -101,7 +101,7 @@ export const findCorrectShareCase = async (serverName: string, shareName: string
     }
 };
 
-// Function to mount an SMB share
+// Function to mount an SMB share - ENHANCED VERSION
 export const mountSMBShare = async (sharePath: string, username: string, password: string): Promise<string> => {
     // Sanitize username to allow email addresses and common special characters
     // Allow alphanumeric, dots, underscores, hyphens, and @ symbols for email addresses
@@ -121,12 +121,116 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     const serverName = pathParts[0];
     const originalShareName = pathParts[1];
     
-    // Pre-mount connectivity check to prevent hanging (non-blocking)
+    // **ENHANCED: Pre-mount system-wide conflict detection and cleanup**
     if (process.env.NODE_ENV === 'development') {
-        console.log(`Checking connectivity to server: ${serverName}`);
+        console.log(`🔍 Checking for existing mounts of: ${sanitizedSharePath}`);
     }
     
-    const connectivityCheck = await checkServerConnectivity(serverName, 5000);
+    try {
+        const systemMounts = await detectSystemSMBMounts();
+        const normalizedSharePath = sanitizedSharePath.toLowerCase();
+        
+        // Check for any existing mounts (including stale ones)
+        const conflictingMounts = systemMounts.filter(mount => {
+            const mountPath = mount.serverPath.toLowerCase();
+            
+            // Direct match
+            if (mountPath === normalizedSharePath) return true;
+            
+            // Match with username stripped
+            const mountPathWithoutUser = mountPath.replace(/^[^@]+@/, '');
+            if (mountPathWithoutUser === normalizedSharePath) return true;
+            
+            // Match with current user added
+            if (mountPath === `${getCurrentUsername()}@${normalizedSharePath}`) return true;
+            
+            return false;
+        });
+        
+        if (conflictingMounts.length > 0) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`⚠️ Found ${conflictingMounts.length} existing mounts for ${sanitizedSharePath}, cleaning up...`);
+                conflictingMounts.forEach(mount => {
+                    console.log(`   - ${mount.serverPath} at ${mount.mountPoint} (${mount.isAppManaged ? 'app' : 'system/finder'})`);
+                });
+            }
+            
+            // Clean up ALL conflicting mounts before proceeding
+            let cleanedMounts = 0;
+            for (const mount of conflictingMounts) {
+                try {
+                    const result = await safeEjectConflictingMount(mount.mountPoint, mount.serverPath);
+                    if (result.success) {
+                        cleanedMounts++;
+                        if (process.env.NODE_ENV === 'development') {
+                            console.log(`✅ Cleaned up conflicting mount: ${mount.mountPoint}`);
+                        }
+                    } else {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.warn(`⚠️ Failed to clean up ${mount.mountPoint}: ${result.error}`);
+                        }
+                    }
+                } catch (cleanupError) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.warn(`⚠️ Error cleaning up ${mount.mountPoint}:`, cleanupError);
+                    }
+                }
+            }
+            
+            if (cleanedMounts > 0) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🧹 Cleaned up ${cleanedMounts} conflicting mounts, waiting for system to stabilize...`);
+                }
+                // Wait for system to stabilize after cleanup
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    } catch (systemCheckError) {
+        if (process.env.NODE_ENV === 'development') {
+            console.warn('⚠️ Error during system mount check:', systemCheckError);
+            console.log('Proceeding with mount attempt anyway...');
+        }
+    }
+    
+    // **ENHANCED: VPN-aware connectivity check to prevent hanging**
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`🔍 Checking VPN and server connectivity for: ${serverName}`);
+    }
+    
+    try {
+        const { quickVPNAwareConnectivityCheck } = await import('../utils/networkUtils');
+        const connectivityResult = await quickVPNAwareConnectivityCheck(serverName);
+        
+        if (!connectivityResult.shouldAttemptMount) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`⚠️ Pre-mount check failed: ${connectivityResult.reason}`);
+                console.log(`🔒 VPN Status: ${connectivityResult.vpnStatus.isConnected ? 'Connected' : 'Disconnected'}`);
+            }
+            
+            // **CRITICAL: Don't attempt mount if VPN is required but not connected**
+            if (connectivityResult.reason.includes('VPN')) {
+                throw new Error(`Cannot connect to ${serverName}: VPN connection required. Please connect to VPN and try again.`);
+            } else {
+                throw new Error(`Server ${serverName} is not accessible: ${connectivityResult.reason}`);
+            }
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Pre-mount check passed: ${connectivityResult.reason}`);
+            if (connectivityResult.vpnStatus.isConnected) {
+                console.log(`🔒 VPN Connected: ${connectivityResult.vpnStatus.connectionName}`);
+            }
+        }
+        
+    } catch (quickCheckError) {
+        if (process.env.NODE_ENV === 'development') {
+            console.warn(`⚠️ Quick connectivity check failed, proceeding anyway:`, quickCheckError);
+        }
+        // If quick check fails, proceed with original logic but with shorter timeouts
+    }
+    
+    // Fallback to original connectivity check with shorter timeout (prevent hanging)
+    const connectivityCheck = await checkServerConnectivity(serverName, 3000); // Reduced from 5000ms
     const isServerUnreachable = !connectivityCheck.accessible;
     
     if (isServerUnreachable) {
@@ -226,7 +330,7 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
     }
 
     try {
-        const result = await execPromise(command, { timeout: 15000 }); // 15 second timeout - reasonable for mount operations
+        const result = await execPromise(command, { timeout: 10000 }); // **REDUCED: 10 second timeout instead of 15 to prevent hanging
         if (process.env.NODE_ENV === 'development') {
             console.log(`Mount successful: //${sanitizedSharePath} -> ${mountPoint}`);
             if (result.stdout && result.stdout.trim().length > 0) {
@@ -303,7 +407,20 @@ export const mountSMBShare = async (sharePath: string, username: string, passwor
             if (process.env.NODE_ENV === 'development') {
                 console.log(`Mount failure: Could not connect to ${serverName}`);
             }
-            throw new Error('Could not connect to the server. Please check the server address and network connection.');
+            
+            // **NEW: VPN-aware error message**
+            try {
+                const { detectVPNStatus } = await import('../utils/networkUtils');
+                const vpnStatus = await detectVPNStatus();
+                
+                if (!vpnStatus.isConnected) {
+                    throw new Error(`Could not connect to the server ${serverName}. VPN connection may be required. Please connect to VPN and try again.`);
+                } else {
+                    throw new Error(`Could not connect to the server ${serverName}. Please check the server address and network connection.`);
+                }
+            } catch (vpnCheckError) {
+                throw new Error(`Could not connect to the server ${serverName}. Please check the server address, network connection, and VPN status.`);
+            }
         } else if (sanitizedErrorMessage.includes('Permission denied') || sanitizedStderr.includes('Permission denied')) {
             if (process.env.NODE_ENV === 'development') {
                 console.log(`Mount failure: Permission denied for ${serverName}`);

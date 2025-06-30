@@ -20,6 +20,10 @@ let scrollTimeout: NodeJS.Timeout | null = null;
 let isScrollingEnabled = true;
 let isContinuousNavigation = false; // Track if user is navigating pages continuously
 
+// **NEW: Track menu state to implement proper toggle behavior**
+let isMenuOpen = false;
+let menuCloseTimeout: NodeJS.Timeout | null = null;
+
 export function setAutoMountServiceReference(service: AutoMountService | null) {
     autoMountServiceRef = service;
 }
@@ -64,24 +68,27 @@ export function createTray(mainWindow: BrowserWindow) {
     tray.on('right-click', () => {
         // Update menu before showing to ensure current state
         updateTrayMenu();
-        tray?.popUpContextMenu();
+        showContextMenu();
     });
 
-    // Handle regular click for quick access to shares
+    // Handle regular click - FIXED: Proper toggle behavior for menu
     tray.on('click', () => {
-        const shareCount = mountedShares.size;
-        
-        if (shareCount === 0) {
-            // No shares - show main window
-            showMainWindow();
-        } else if (shareCount === 1) {
-            // Single share - open it directly
-            const firstShare = Array.from(mountedShares.values())[0];
-            openSpecificShare(firstShare);
+        // **FIXED**: Implement proper menu toggle behavior
+        if (isMenuOpen) {
+            // Menu is currently open, close it
+            closeContextMenu();
         } else {
-            // Multiple shares - show context menu for selection
-            updateTrayMenu();
-            tray?.popUpContextMenu();
+            // Menu is closed, open it
+            const shareCount = mountedShares.size;
+            
+            if (shareCount === 0) {
+                // No shares - show main window for user to add connections
+                showMainWindow();
+            } else {
+                // Show context menu for share selection
+                updateTrayMenu();
+                showContextMenu();
+            }
         }
     });
 
@@ -97,6 +104,14 @@ export function createTray(mainWindow: BrowserWindow) {
 export function destroyTray(): void {
     if (tray) {
         cleanupTrayNavigationShortcuts();
+        
+        // **NEW: Clean up menu state tracking**
+        if (menuCloseTimeout) {
+            clearTimeout(menuCloseTimeout);
+            menuCloseTimeout = null;
+        }
+        isMenuOpen = false;
+        
         tray.destroy();
         tray = null;
     }
@@ -136,7 +151,7 @@ function updateTrayTooltip() {
         if (mountedShares.size > sharesPerPage) {
             const totalPages = Math.ceil(mountedShares.size / sharesPerPage);
             tooltip += `\n📄 Page ${currentPage + 1} of ${totalPages}`;
-            tooltip += '\n⌨️ Ctrl+Shift+↑/↓ to navigate';
+            tooltip += '\n⌨️ ⌘⇧↑/↓ to navigate';
         }
     }
     
@@ -589,17 +604,17 @@ export function updateTrayMenu(shares?: Map<string, any>) {
                     enabled: false
                 },
                 {
-                    label: 'Ctrl+Shift+↑  Previous Page',
+                    label: '⌘⇧↑  Previous Page',
                     enabled: mountedShares.size > sharesPerPage,
                     click: () => scrollToPreviousPage()
                 },
                 {
-                    label: 'Ctrl+Shift+↓  Next Page',
+                    label: '⌘⇧↓  Next Page',
                     enabled: mountedShares.size > sharesPerPage,
                     click: () => scrollToNextPage()
                 },
                 {
-                    label: 'Ctrl+Shift+O  Open First Share',
+                    label: '⌘⇧O  Open First Share',
                     enabled: mountedShares.size > 0,
                     click: () => {
                         const allShares = Array.from(mountedShares.values());
@@ -622,6 +637,62 @@ export function updateTrayMenu(shares?: Map<string, any>) {
     ]);
 
     tray.setContextMenu(contextMenu);
+}
+
+/**
+ * **NEW: Helper functions for proper menu toggle behavior**
+ */
+
+/**
+ * Show context menu and track its state
+ */
+function showContextMenu(): void {
+    if (!tray) return;
+    
+    // Clear any existing close timeout
+    if (menuCloseTimeout) {
+        clearTimeout(menuCloseTimeout);
+        menuCloseTimeout = null;
+    }
+    
+    // Mark menu as open
+    isMenuOpen = true;
+    
+    // Show the menu
+    tray.popUpContextMenu();
+    
+    // Set up automatic state reset after menu closes
+    // This handles cases where menu is closed by clicking elsewhere
+    menuCloseTimeout = setTimeout(() => {
+        isMenuOpen = false;
+        menuCloseTimeout = null;
+    }, 100); // Short delay to allow menu to appear
+}
+
+/**
+ * Close context menu and reset state
+ */
+function closeContextMenu(): void {
+    if (!tray) return;
+    
+    // Mark menu as closed
+    isMenuOpen = false;
+    
+    // Clear any existing timeout
+    if (menuCloseTimeout) {
+        clearTimeout(menuCloseTimeout);
+        menuCloseTimeout = null;
+    }
+    
+    // Close the menu by showing an empty one briefly
+    // This is a workaround since Electron doesn't have a direct closeMenu method
+    const emptyMenu = Menu.buildFromTemplate([]);
+    tray.setContextMenu(emptyMenu);
+    
+    // Restore the real menu after a brief moment
+    setTimeout(() => {
+        updateTrayMenu();
+    }, 50);
 }
 
 /**
@@ -649,7 +720,7 @@ function scrollToPreviousPage(): void {
     // Automatically reopen tray menu after a brief delay for continuous navigation
     setTimeout(() => {
         if (tray && isContinuousNavigation) {
-            tray.popUpContextMenu();
+            showContextMenu();
         }
         isScrollingEnabled = true;
     }, 250); // Optimized delay for smooth reopening
@@ -685,7 +756,7 @@ function scrollToNextPage(): void {
     // Automatically reopen tray menu after a brief delay for continuous navigation
     setTimeout(() => {
         if (tray && isContinuousNavigation) {
-            tray.popUpContextMenu();
+            showContextMenu();
         }
         isScrollingEnabled = true;
     }, 250); // Optimized delay for smooth reopening
