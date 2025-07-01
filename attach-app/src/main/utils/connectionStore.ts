@@ -363,6 +363,112 @@ class ConnectionStore {
             createdAt: conn.createdAt
         }));
     }
+
+    /**
+     * Update connection details while preserving the connection ID and password
+     * This is used when editing connection details in the settings
+     */
+    async updateConnection(
+        connectionId: string,
+        updates: Partial<Pick<SavedConnection, 'label' | 'sharePath' | 'username' | 'autoMount'>>
+    ): Promise<{
+        success: boolean;
+        connection?: SavedConnection;
+        changes?: Array<keyof SavedConnection>;
+        message: string;
+    }> {
+        try {
+            const connections = this.getConnections();
+            const connectionIndex = connections.findIndex(conn => conn.id === connectionId);
+            
+            if (connectionIndex === -1) {
+                return {
+                    success: false,
+                    message: 'Connection not found'
+                };
+            }
+
+            const existingConnection = connections[connectionIndex];
+            const changes: Array<keyof SavedConnection> = [];
+            
+            // Track what fields are being changed
+            if (updates.label && updates.label !== existingConnection.label) {
+                changes.push('label');
+            }
+            if (updates.sharePath && updates.sharePath !== existingConnection.sharePath) {
+                changes.push('sharePath');
+            }
+            if (updates.username && updates.username !== existingConnection.username) {
+                changes.push('username');
+            }
+            if (updates.autoMount !== undefined && updates.autoMount !== existingConnection.autoMount) {
+                changes.push('autoMount');
+            }
+
+            // If no changes detected, return early
+            if (changes.length === 0) {
+                return {
+                    success: true,
+                    connection: existingConnection,
+                    changes: [],
+                    message: 'No changes detected'
+                };
+            }
+
+            // Validate that we're not creating a duplicate connection
+            if (updates.sharePath || updates.username) {
+                const newSharePath = updates.sharePath || existingConnection.sharePath;
+                const newUsername = updates.username || existingConnection.username;
+                
+                const duplicateConnection = connections.find(conn => 
+                    conn.id !== connectionId &&
+                    conn.sharePath === newSharePath && 
+                    conn.username === newUsername
+                );
+
+                if (duplicateConnection) {
+                    return {
+                        success: false,
+                        message: `A connection already exists for ${newSharePath} with username ${newUsername}`
+                    };
+                }
+            }
+
+            // Apply updates
+            const updatedConnection: SavedConnection = {
+                ...existingConnection,
+                ...updates,
+                lastUsed: new Date() // Update last used time when connection is modified
+            };
+
+            // Update the connections array
+            connections[connectionIndex] = updatedConnection;
+            this.store.set('connections', connections);
+
+            // Update recent connections list
+            this.updateRecentConnections(connectionId);
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`📝 Updated connection ${connectionId}: ${changes.join(', ')} changed`);
+            }
+
+            return {
+                success: true,
+                connection: updatedConnection,
+                changes,
+                message: `Connection updated successfully (${changes.join(', ')} changed)`
+            };
+
+        } catch (error: any) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`Failed to update connection ${connectionId}:`, error);
+            }
+            return {
+                success: false,
+                message: `Failed to update connection: ${error.message}`
+            };
+        }
+    }
 }
 
 // Singleton instance

@@ -320,6 +320,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('editConnectionLastUsed').textContent = new Date(selectedConnection.lastUsed).toLocaleString();
             document.getElementById('editConnectionCreated').textContent = new Date(selectedConnection.createdAt).toLocaleString();
 
+            // Check mount status and update UI accordingly
+            try {
+                const mountStatus = await window.api.getConnectionMountStatus(connectionId);
+                updateMountStatusDisplay(mountStatus);
+            } catch (error) {
+                console.warn('Failed to get mount status:', error);
+                // Hide mount status if we can't get it
+                const statusElement = document.getElementById('connectionMountStatus');
+                if (statusElement) {
+                    statusElement.style.display = 'none';
+                }
+            }
+
             // Show the management panel
             document.getElementById('connectionManagementPanel').style.display = 'block';
             
@@ -344,6 +357,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('editConnectionSharePath').readOnly = !editing;
         document.getElementById('editConnectionUsername').readOnly = !editing;
         document.getElementById('editConnectionAutoMount').disabled = !editing;
+        
+        // Show/hide edit warning
+        const warningNotice = document.getElementById('editWarningNotice');
+        if (warningNotice) {
+            warningNotice.style.display = editing ? 'block' : 'none';
+        }
         
         // Toggle button visibility
         document.getElementById('editConnectionBtn').style.display = editing ? 'none' : 'inline-block';
@@ -373,7 +392,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const result = await window.api.updateConnection(selectedConnection.id, updatedData);
             
             if (result.success) {
-                showStatus('Connection updated successfully', 'success');
+                let message = 'Connection updated successfully';
+                
+                // Check if remounting is needed and offer the option
+                if (result.needsRemount) {
+                    message += '. Remount recommended for changes to take effect.';
+                    
+                    // Show remount option
+                    showRemountOption(selectedConnection.id, result.changes || []);
+                }
+                
+                showStatus(message, 'success');
                 
                 // Reload the connections dropdown
                 await loadSavedConnectionsDropdown();
@@ -442,4 +471,112 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial save button state
     updateSaveButtonState();
+
+    // Helper function to update mount status display
+    function updateMountStatusDisplay(mountStatus) {
+        const statusContainer = document.getElementById('connectionMountStatus');
+        if (!statusContainer) return; // Element might not exist yet
+
+        if (mountStatus.success && mountStatus.isMounted) {
+            statusContainer.style.display = 'block';
+            
+            let statusText = '🟢 Currently mounted';
+            let statusClass = 'mount-status-mounted';
+            
+            if (mountStatus.hasLabelMismatch) {
+                statusText = '🟡 Mounted with outdated label';
+                statusClass = 'mount-status-outdated';
+            }
+            
+            statusContainer.className = `mount-status ${statusClass}`;
+            statusContainer.innerHTML = `
+                <div class="mount-status-text">${statusText}</div>
+                <div class="mount-status-details">
+                    <small>Mount Point: ${mountStatus.mountedShare?.mountPoint || 'Unknown'}</small>
+                    ${mountStatus.hasLabelMismatch ? 
+                        `<small>Current Label: "${mountStatus.currentLabel}" (will become "${selectedConnection?.label}")</small>` : 
+                        ''
+                    }
+                </div>
+                ${mountStatus.hasLabelMismatch ? 
+                    '<button type="button" id="updateMountBtn" class="btn-secondary small">Update Mount</button>' : 
+                    ''
+                }
+            `;
+            
+            // Add event listener for update mount button
+            const updateBtn = document.getElementById('updateMountBtn');
+            if (updateBtn) {
+                updateBtn.addEventListener('click', () => remountConnection(selectedConnection.id, mountStatus.currentLabel));
+            }
+        } else {
+            statusContainer.style.display = 'block';
+            statusContainer.className = 'mount-status mount-status-unmounted';
+            statusContainer.innerHTML = '<div class="mount-status-text">⚪ Not currently mounted</div>';
+        }
+    }
+
+    // Helper function to show remount option after connection update
+    function showRemountOption(connectionId, changes) {
+        const statusMessage = document.getElementById('statusMessage');
+        if (!statusMessage) return;
+
+        // Create remount button container
+        const remountContainer = document.createElement('div');
+        remountContainer.className = 'remount-option';
+        remountContainer.innerHTML = `
+            <p>Changes made to: ${changes.join(', ')}</p>
+            <button type="button" id="remountConnectionBtn" class="btn-primary small">
+                Remount to Apply Changes
+            </button>
+            <button type="button" id="dismissRemountBtn" class="btn-secondary small">
+                Dismiss
+            </button>
+        `;
+
+        // Insert after status message
+        statusMessage.parentNode.insertBefore(remountContainer, statusMessage.nextSibling);
+
+        // Add event listeners
+        document.getElementById('remountConnectionBtn').addEventListener('click', async () => {
+            await remountConnection(connectionId);
+            remountContainer.remove();
+        });
+
+        document.getElementById('dismissRemountBtn').addEventListener('click', () => {
+            remountContainer.remove();
+        });
+
+        // Auto-dismiss after 15 seconds
+        setTimeout(() => {
+            if (remountContainer.parentNode) {
+                remountContainer.remove();
+            }
+        }, 15000);
+    }
+
+    // Function to remount a connection
+    async function remountConnection(connectionId, oldLabel) {
+        try {
+            showStatus('Remounting connection...', 'info');
+            
+            const result = await window.api.remountUpdatedConnection(connectionId, oldLabel);
+            
+            if (result.success) {
+                showStatus('Connection remounted successfully with updated details', 'success');
+                
+                // Refresh mount status
+                if (selectedConnection) {
+                    const mountStatus = await window.api.getConnectionMountStatus(connectionId);
+                    updateMountStatusDisplay(mountStatus);
+                }
+            } else {
+                showStatus(result.message || 'Failed to remount connection', 'error');
+            }
+            
+        } catch (error) {
+            showStatus('Failed to remount connection', 'error');
+            console.error('Remount error:', error);
+        }
+    }
 });

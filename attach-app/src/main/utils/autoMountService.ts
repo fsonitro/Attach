@@ -25,9 +25,11 @@ const AUTO_MOUNT_CONFIG = {
 
 export class AutoMountService {
     private readonly mountedShares: Map<string, MountedShare>;
+    private readonly connectionIdToLabel: Map<string, string>; // Track connection ID to label mapping
 
     constructor(mountedSharesRef: Map<string, MountedShare>) {
         this.mountedShares = mountedSharesRef;
+        this.connectionIdToLabel = new Map();
     }
 
     /**
@@ -284,8 +286,9 @@ export class AutoMountService {
                         mountedAt: new Date()
                     };
 
-                    // Add to mounted shares map
+                    // Add to mounted shares map and track connection ID
                     this.mountedShares.set(connection.label, mountedShare);
+                    this.connectionIdToLabel.set(connection.id, connection.label);
 
                     if (process.env.NODE_ENV === 'development') {
                         console.log(`✅ Auto-mounted: ${connection.label} -> ${mountPoint}`);
@@ -449,6 +452,195 @@ export class AutoMountService {
         return {
             totalMounted: this.mountedShares.size,
             mountedConnections
+        };
+    }
+
+    /**
+     * Update a mounted share's details when connection information changes
+     * This is called when a user edits connection details in settings
+     */
+    async updateMountedShareDetails(connectionId: string, updatedConnection: SavedConnection): Promise<{
+        success: boolean;
+        wasUpdated: boolean;
+        needsRemount: boolean;
+        oldLabel?: string;
+        message: string;
+    }> {
+        try {
+            // Find the mounted share using connection ID mapping first
+            let oldLabel = this.connectionIdToLabel.get(connectionId);
+            let oldMountedShare: MountedShare | undefined;
+
+            if (oldLabel) {
+                oldMountedShare = this.mountedShares.get(oldLabel);
+            }
+
+            // Fallback: search by connection details if ID mapping failed
+            if (!oldMountedShare) {
+                for (const [label, share] of this.mountedShares.entries()) {
+                    if (share.sharePath === updatedConnection.sharePath && share.username === updatedConnection.username) {
+                        oldMountedShare = share;
+                        oldLabel = label;
+                        break;
+                    }
+                }
+            }
+
+            if (!oldMountedShare) {
+                return {
+                    success: true,
+                    wasUpdated: false,
+                    needsRemount: false,
+                    message: 'Connection is not currently mounted'
+                };
+            }
+
+            // Check if critical details that require remounting have changed
+            const needsRemount = (
+                oldMountedShare.sharePath !== updatedConnection.sharePath ||
+                oldMountedShare.username !== updatedConnection.username
+            );
+
+            // Update the mounted share entry
+            const updatedMountedShare: MountedShare = {
+                ...oldMountedShare,
+                label: updatedConnection.label,
+                sharePath: updatedConnection.sharePath,
+                username: updatedConnection.username
+            };
+
+            // Remove old entry and add updated entry
+            if (oldLabel && oldLabel !== updatedConnection.label) {
+                this.mountedShares.delete(oldLabel);
+                this.connectionIdToLabel.delete(connectionId); // Clean up old mapping
+            }
+            
+            // Add with updated label
+            this.mountedShares.set(updatedConnection.label, updatedMountedShare);
+            this.connectionIdToLabel.set(connectionId, updatedConnection.label);
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`📝 Updated mounted share details: ${oldLabel} -> ${updatedConnection.label}`);
+                if (needsRemount) {
+                    console.log(`⚠️ Connection requires remounting due to critical changes`);
+                }
+            }
+
+            return {
+                success: true,
+                wasUpdated: true,
+                needsRemount,
+                oldLabel,
+                message: needsRemount 
+                    ? 'Connection updated. Remount required for changes to take effect.'
+                    : 'Connection details updated successfully.'
+            };
+
+        } catch (error: any) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`❌ Failed to update mounted share details:`, error);
+            }
+            return {
+                success: false,
+                wasUpdated: false,
+                needsRemount: false,
+                message: `Failed to update mounted share: ${error.message}`
+            };
+        }
+    }
+
+    /**
+     * Remount a connection after details have been updated
+     * This ensures the updated connection details are properly reflected
+     */
+    async remountUpdatedConnection(connectionId: string, oldLabel?: string): Promise<AutoMountResult> {
+        try {
+            const connection = await connectionStore.getConnection(connectionId);
+            if (!connection) {
+                throw new Error('Connection not found');
+            }
+
+            // First unmount the old connection if it exists
+            const labelToUnmount = oldLabel || this.connectionIdToLabel.get(connectionId);
+            if (labelToUnmount) {
+                const oldMountedShare = this.mountedShares.get(labelToUnmount);
+                if (oldMountedShare) {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`🔄 Unmounting old connection: ${labelToUnmount}`);
+                    }
+
+                    // Import unmount function
+                    const { unmountSMBShare } = await import('../mount/smbService');
+                    
+                    try {
+                        await unmountSMBShare(oldMountedShare.mountPoint);
+                        this.mountedShares.delete(labelToUnmount);
+                        this.connectionIdToLabel.delete(connectionId); // Clean up ID mapping
+                    } catch (unmountError) {
+                        if (process.env.NODE_ENV === 'development') {
+                            console.warn(`⚠️ Failed to unmount old connection, proceeding with new mount:`, unmountError);
+                        }
+                        // Continue with remounting even if unmount fails
+                    }
+                }
+            }
+
+            // Now mount with the updated connection details
+            const result = await this.mountConnectionWithCoordination(connection, 'remount-after-edit');
+            
+            if (result.success && process.env.NODE_ENV === 'development') {
+                console.log(`✅ Successfully remounted updated connection: ${connection.label}`);
+            }
+
+            return result;
+
+        } catch (error: any) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error(`❌ Failed to remount updated connection:`, error);
+            }
+            return {
+                connection: (await connectionStore.getConnection(connectionId))!,
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Get mounted share by connection ID or connection details
+     */
+    getMountedShareByConnection(connection: SavedConnection): MountedShare | undefined {
+        // First try by current label
+        const byLabel = this.mountedShares.get(connection.label);
+        if (byLabel) return byLabel;
+
+        // Then search by share path and username
+        for (const share of this.mountedShares.values()) {
+            if (share.sharePath === connection.sharePath && share.username === connection.username) {
+                return share;
+            }
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Check if a connection is mounted and return its current status
+     */
+    getConnectionMountStatus(connection: SavedConnection): {
+        isMounted: boolean;
+        mountedShare?: MountedShare;
+        currentLabel?: string;
+        hasLabelMismatch: boolean;
+    } {
+        const mountedShare = this.getMountedShareByConnection(connection);
+        const hasLabelMismatch = mountedShare ? mountedShare.label !== connection.label : false;
+
+        return {
+            isMounted: !!mountedShare,
+            mountedShare,
+            currentLabel: mountedShare?.label,
+            hasLabelMismatch
         };
     }
 }

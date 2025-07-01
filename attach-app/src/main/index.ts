@@ -1029,38 +1029,74 @@ function setupIpcHandlers() {
         }
     });
 
-    ipcMain.handle('update-connection', async (event, connectionId: string, connectionData: any): Promise<{success: boolean, message: string}> => {
+    ipcMain.handle('update-connection', async (event, connectionId: string, connectionData: any): Promise<{
+        success: boolean; 
+        message: string;
+        needsRemount?: boolean;
+        changes?: string[];
+    }> => {
         try {
-            const connection = await connectionStore.getConnection(connectionId);
-            if (!connection) {
+            // Use the improved update method
+            const updateResult = await connectionStore.updateConnection(connectionId, {
+                label: connectionData.label,
+                sharePath: connectionData.sharePath,
+                username: connectionData.username,
+                autoMount: connectionData.autoMount
+            });
+
+            if (!updateResult.success) {
                 return {
                     success: false,
-                    message: 'Connection not found'
+                    message: updateResult.message
                 };
             }
 
-            // Get the current password
-            const currentPassword = await connectionStore.getPassword(connectionId);
-            if (!currentPassword) {
+            // If no changes were made, return early
+            if (!updateResult.changes || updateResult.changes.length === 0) {
                 return {
-                    success: false,
-                    message: 'Connection password not found'
+                    success: true,
+                    message: updateResult.message
                 };
             }
 
-            // Update the connection with new data
-            await connectionStore.saveConnection(
-                connectionData.sharePath || connection.sharePath,
-                connectionData.username || connection.username,
-                currentPassword, // Keep the existing password
-                connectionData.label || connection.label,
-                connectionData.autoMount !== undefined ? connectionData.autoMount : connection.autoMount
+            // Update mounted share details if the connection is currently mounted
+            let mountUpdateResult;
+            if (autoMountService && updateResult.connection) {
+                mountUpdateResult = await autoMountService.updateMountedShareDetails(
+                    connectionId, 
+                    updateResult.connection
+                );
+            }
+
+            // Determine if remounting is needed
+            const criticalChanges = updateResult.changes.some(change => 
+                change === 'sharePath' || change === 'username'
             );
+
+            const needsRemount = criticalChanges || (mountUpdateResult?.needsRemount ?? false);
+
+            let responseMessage = updateResult.message;
+            if (mountUpdateResult?.wasUpdated) {
+                responseMessage += mountUpdateResult.needsRemount 
+                    ? ' Mount details updated - remount recommended.'
+                    : ' Mount details updated successfully.';
+            }
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`📝 Connection update completed:`, {
+                    changes: updateResult.changes,
+                    needsRemount,
+                    mountUpdated: mountUpdateResult?.wasUpdated
+                });
+            }
 
             return {
                 success: true,
-                message: 'Connection updated successfully'
+                message: responseMessage,
+                needsRemount,
+                changes: updateResult.changes
             };
+
         } catch (error) {
             if (process.env.NODE_ENV === 'development') {
                 console.error('Failed to update connection:', error);
@@ -1614,6 +1650,110 @@ function setupIpcHandlers() {
                 console.error('Failed to toggle share monitoring:', error);
             }
             return { success: false, message: 'Failed to toggle share monitoring' };
+        }
+    });
+
+    // Handler for remounting a connection after editing (to apply changes)
+    ipcMain.handle('remount-updated-connection', async (event, connectionId: string, oldLabel?: string): Promise<{
+        success: boolean;
+        message: string;
+        mountPoint?: string;
+        label?: string;
+    }> => {
+        try {
+            if (!autoMountService) {
+                return {
+                    success: false,
+                    message: 'Auto-mount service not initialized'
+                };
+            }
+
+            const result = await autoMountService.remountUpdatedConnection(connectionId, oldLabel);
+            
+            if (result.success && result.mountPoint) {
+                // Update tray menu to reflect changes
+                updateTrayMenu(mountedShares);
+                
+                return {
+                    success: true,
+                    message: `Successfully remounted ${result.connection.label} with updated details`,
+                    mountPoint: result.mountPoint,
+                    label: result.connection.label
+                };
+            } else {
+                return {
+                    success: false,
+                    message: result.error || 'Failed to remount connection'
+                };
+            }
+
+        } catch (error: any) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to remount updated connection:', error);
+            }
+            return {
+                success: false,
+                message: `Failed to remount connection: ${error.message}`
+            };
+        }
+    });
+
+    // Handler to get connection mount status (useful for settings UI)
+    ipcMain.handle('get-connection-mount-status', async (event, connectionId: string): Promise<{
+        success: boolean;
+        isMounted: boolean;
+        mountedShare?: any;
+        currentLabel?: string;
+        hasLabelMismatch: boolean;
+        message: string;
+    }> => {
+        try {
+            const connection = await connectionStore.getConnection(connectionId);
+            if (!connection) {
+                return {
+                    success: false,
+                    isMounted: false,
+                    hasLabelMismatch: false,
+                    message: 'Connection not found'
+                };
+            }
+
+            if (!autoMountService) {
+                return {
+                    success: true,
+                    isMounted: false,
+                    hasLabelMismatch: false,
+                    message: 'Auto-mount service not available'
+                };
+            }
+
+            const status = autoMountService.getConnectionMountStatus(connection);
+            
+            return {
+                success: true,
+                isMounted: status.isMounted,
+                mountedShare: status.mountedShare ? {
+                    label: status.mountedShare.label,
+                    mountPoint: status.mountedShare.mountPoint,
+                    mountedAt: status.mountedShare.mountedAt
+                } : undefined,
+                currentLabel: status.currentLabel,
+                hasLabelMismatch: status.hasLabelMismatch,
+                message: status.isMounted 
+                    ? (status.hasLabelMismatch ? 'Mounted with outdated label' : 'Currently mounted') 
+                    : 'Not mounted'
+            };
+
+        } catch (error: any) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Failed to get connection mount status:', error);
+            }
+            return {
+                success: false,
+                isMounted: false,
+                hasLabelMismatch: false,
+                message: `Failed to get mount status: ${error.message}`
+            };
         }
     });
 }

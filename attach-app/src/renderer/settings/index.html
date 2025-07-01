@@ -110,6 +110,11 @@
                     <div class="connection-details">
                         <h3>Connection Details</h3>
                         
+                        <!-- Edit Warning Notice -->
+                        <div id="editWarningNotice" class="edit-warning" style="display: none;">
+                            <p><strong>⚠️ Note:</strong> Changes to Share Path or Username will require remounting to take effect. Label changes will be reflected immediately on remount.</p>
+                        </div>
+                        
                         <div class="form-group">
                             <label for="editConnectionLabel">Label:</label>
                             <input type="text" id="editConnectionLabel" class="form-input" readonly>
@@ -132,15 +137,9 @@
                             </label>
                         </div>
                         
-                        <div class="connection-metadata">
-                            <div class="metadata-item">
-                                <strong>Last Used:</strong>
-                                <span id="editConnectionLastUsed">-</span>
-                            </div>
-                            <div class="metadata-item">
-                                <strong>Created:</strong>
-                                <span id="editConnectionCreated">-</span>
-                            </div>
+                        <!-- Mount Status Display -->
+                        <div id="connectionMountStatus" class="mount-status" style="display: none;">
+                            <!-- Mount status will be populated by JavaScript -->
                         </div>
                         
                         <div class="connection-actions">

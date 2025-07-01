@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('api', {
     mountSavedConnection: (connectionId: string) =>
         ipcRenderer.invoke('mount-saved-connection', connectionId),
     
+    // Enhanced connection management
+    remountUpdatedConnection: (connectionId: string, oldLabel?: string) =>
+        ipcRenderer.invoke('remount-updated-connection', connectionId, oldLabel),
+    getConnectionMountStatus: (connectionId: string) =>
+        ipcRenderer.invoke('get-connection-mount-status', connectionId),
+    
     // Settings
     getAutoMountSettings: () =>
         ipcRenderer.invoke('get-auto-mount-settings'),
