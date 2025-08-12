@@ -1,7 +1,7 @@
 // Essential network notifications - minimal system focused on critical events only
 // Prevents app hanging while still providing essential user feedback
 
-import { Notification } from 'electron';
+import { Notification, app } from 'electron';
 
 // Configuration constants
 const NOTIFICATION_CONFIG = {

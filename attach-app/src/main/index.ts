@@ -13,6 +13,9 @@ import { createNetworkWatcher, NetworkWatcher } from './utils/networkWatcher';
 import { MountCoordinator } from './utils/mountCoordinator';
 import { MountedShare, MountResult, UnmountResult } from '../types';
 
+// Set app name for proper identification in notifications and system dialogs
+app.setName('Attach');
+
 // Global state to track mounted shares
 let mountedShares: Map<string, MountedShare> = new Map();
 let mainWindow: BrowserWindow | null = null;
@@ -1352,10 +1355,11 @@ function setupIpcHandlers() {
             if (settings.startAtLogin !== undefined) {
                 connectionStore.setStartAtLogin(settings.startAtLogin);
                 
-                // Set login item for macOS
+                // Set login item for macOS with proper app information
                 app.setLoginItemSettings({
                     openAtLogin: settings.startAtLogin,
-                    name: 'Attach'
+                    name: 'Attach',
+                    path: app.getPath('exe')
                 });
             }
             
