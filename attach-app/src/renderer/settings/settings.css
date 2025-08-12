@@ -458,6 +458,65 @@ input:checked + .toggle-slider:hover {
     letter-spacing: -0.01em;
 }
 
+/* Form Groups for Connection Details */
+.form-group {
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #86868b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d1d1d6;
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: #ffffff;
+    color: #1d1d1f;
+    transition: all 0.15s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #007aff;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.form-input[readonly] {
+    background-color: #f2f2f7;
+    cursor: default;
+    border-color: #e5e5ea;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: #1d1d1f;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: normal;
+    margin: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"]:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
 .connection-info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -605,6 +664,57 @@ input:checked + .toggle-slider:hover {
 
 .edit-warning p {
     margin: 0;
+    line-height: 1.4;
+}
+
+/* Connection Metadata Styles */
+.connection-metadata {
+    margin: 16px 0;
+    padding: 12px;
+    background-color: #f2f2f7;
+    border-radius: 6px;
+    border: 1px solid #e5e5ea;
+}
+
+.metadata-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.metadata-item:not(:last-child) {
+    border-bottom: 1px solid #e5e5ea;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+}
+
+.metadata-item label {
+    font-weight: 500;
+    color: #666;
+    margin: 0;
+}
+
+.metadata-item span {
+    color: #1d1d1f;
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* Read-only Notice Styles */
+.readonly-notice {
+    margin: 16px 0 0 0;
+    padding: 12px;
+    background-color: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 6px;
+    text-align: center;
+}
+
+.readonly-notice p {
+    margin: 0;
+    font-size: 12px;
+    color: #1565c0;
     line-height: 1.4;
 }
 

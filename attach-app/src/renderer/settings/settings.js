@@ -29,7 +29,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Connection management state
     let selectedConnection = null;
-    let isEditingConnection = false;
 
     // Load settings on startup
     await loadSettings();
@@ -75,12 +74,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         elements.resetDefaults.addEventListener('click', resetDefaults);
         elements.cancelBtn.addEventListener('click', cancelChanges);
         elements.saveBtn.addEventListener('click', saveChanges);
-
-        // Connection management handlers
-        document.getElementById('editConnectionBtn')?.addEventListener('click', enableConnectionEdit);
-        document.getElementById('saveConnectionBtn')?.addEventListener('click', saveConnectionEdit);
-        document.getElementById('cancelEditBtn')?.addEventListener('click', cancelConnectionEdit);
-        document.getElementById('deleteConnectionBtn')?.addEventListener('click', deleteConnection);
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
@@ -333,139 +326,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            // Show the management panel
+            // Show the management panel in read-only mode
             document.getElementById('connectionManagementPanel').style.display = 'block';
-            
-            // Reset edit state
-            setConnectionEditMode(false);
             
         } catch (error) {
             showStatus('Failed to load connection details', 'error');
-        }
-    }
-
-    function enableConnectionEdit() {
-        if (!selectedConnection) return;
-        setConnectionEditMode(true);
-    }
-
-    function setConnectionEditMode(editing) {
-        isEditingConnection = editing;
-        
-        // Toggle readonly state of inputs
-        document.getElementById('editConnectionLabel').readOnly = !editing;
-        document.getElementById('editConnectionSharePath').readOnly = !editing;
-        document.getElementById('editConnectionUsername').readOnly = !editing;
-        document.getElementById('editConnectionAutoMount').disabled = !editing;
-        
-        // Show/hide edit warning
-        const warningNotice = document.getElementById('editWarningNotice');
-        if (warningNotice) {
-            warningNotice.style.display = editing ? 'block' : 'none';
-        }
-        
-        // Toggle button visibility
-        document.getElementById('editConnectionBtn').style.display = editing ? 'none' : 'inline-block';
-        document.getElementById('saveConnectionBtn').style.display = editing ? 'inline-block' : 'none';
-        document.getElementById('cancelEditBtn').style.display = editing ? 'inline-block' : 'none';
-        document.getElementById('deleteConnectionBtn').style.display = editing ? 'none' : 'inline-block';
-    }
-
-    async function saveConnectionEdit() {
-        if (!selectedConnection || !isEditingConnection) return;
-
-        try {
-            const updatedData = {
-                label: document.getElementById('editConnectionLabel').value.trim(),
-                sharePath: document.getElementById('editConnectionSharePath').value.trim(),
-                username: document.getElementById('editConnectionUsername').value.trim(),
-                autoMount: document.getElementById('editConnectionAutoMount').checked
-            };
-
-            // Validate required fields
-            if (!updatedData.label || !updatedData.sharePath || !updatedData.username) {
-                showStatus('All fields are required', 'error');
-                return;
-            }
-
-            // Update the connection via API
-            const result = await window.api.updateConnection(selectedConnection.id, updatedData);
-            
-            if (result.success) {
-                let message = 'Connection updated successfully';
-                
-                // Check if remounting is needed and offer the option
-                if (result.needsRemount) {
-                    message += '. Remount recommended for changes to take effect.';
-                    
-                    // Show remount option
-                    showRemountOption(selectedConnection.id, result.changes || []);
-                }
-                
-                showStatus(message, 'success');
-                
-                // Reload the connections dropdown
-                await loadSavedConnectionsDropdown();
-                
-                // Update selected connection and reload details
-                selectedConnection = { ...selectedConnection, ...updatedData };
-                await loadConnectionDetails(selectedConnection.id);
-                
-            } else {
-                showStatus(result.message || 'Failed to update connection', 'error');
-            }
-            
-        } catch (error) {
-            showStatus('Failed to update connection', 'error');
-        }
-    }
-
-    function cancelConnectionEdit() {
-        if (!selectedConnection) return;
-        
-        // Restore original values
-        document.getElementById('editConnectionLabel').value = selectedConnection.label;
-        document.getElementById('editConnectionSharePath').value = selectedConnection.sharePath;
-        document.getElementById('editConnectionUsername').value = selectedConnection.username;
-        document.getElementById('editConnectionAutoMount').checked = selectedConnection.autoMount;
-        
-        // Exit edit mode
-        setConnectionEditMode(false);
-    }
-
-    async function deleteConnection() {
-        if (!selectedConnection) return;
-
-        const confirmed = confirm(
-            `Are you sure you want to delete the connection "${selectedConnection.label}"?\n\n` +
-            'This will remove the connection and its saved credentials.\n' +
-            'This action cannot be undone.'
-        );
-
-        if (!confirmed) return;
-
-        try {
-            const result = await window.api.removeSavedConnection(selectedConnection.id);
-            
-            if (result.success) {
-                showStatus('Connection deleted successfully', 'success');
-                
-                // Hide management panel
-                document.getElementById('connectionManagementPanel').style.display = 'none';
-                
-                // Reload connections dropdown
-                await loadSavedConnectionsDropdown();
-                
-                // Reset selection
-                elements.viewSavedConnections.value = '';
-                selectedConnection = null;
-                
-            } else {
-                showStatus(result.message || 'Failed to delete connection', 'error');
-            }
-            
-        } catch (error) {
-            showStatus('Failed to delete connection', 'error');
+            console.error('Error loading connection details:', error);
         }
     }
 
@@ -498,85 +364,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ''
                     }
                 </div>
-                ${mountStatus.hasLabelMismatch ? 
-                    '<button type="button" id="updateMountBtn" class="btn-secondary small">Update Mount</button>' : 
-                    ''
-                }
             `;
-            
-            // Add event listener for update mount button
-            const updateBtn = document.getElementById('updateMountBtn');
-            if (updateBtn) {
-                updateBtn.addEventListener('click', () => remountConnection(selectedConnection.id, mountStatus.currentLabel));
-            }
         } else {
             statusContainer.style.display = 'block';
             statusContainer.className = 'mount-status mount-status-unmounted';
             statusContainer.innerHTML = '<div class="mount-status-text">⚪ Not currently mounted</div>';
-        }
-    }
-
-    // Helper function to show remount option after connection update
-    function showRemountOption(connectionId, changes) {
-        const statusMessage = document.getElementById('statusMessage');
-        if (!statusMessage) return;
-
-        // Create remount button container
-        const remountContainer = document.createElement('div');
-        remountContainer.className = 'remount-option';
-        remountContainer.innerHTML = `
-            <p>Changes made to: ${changes.join(', ')}</p>
-            <button type="button" id="remountConnectionBtn" class="btn-primary small">
-                Remount to Apply Changes
-            </button>
-            <button type="button" id="dismissRemountBtn" class="btn-secondary small">
-                Dismiss
-            </button>
-        `;
-
-        // Insert after status message
-        statusMessage.parentNode.insertBefore(remountContainer, statusMessage.nextSibling);
-
-        // Add event listeners
-        document.getElementById('remountConnectionBtn').addEventListener('click', async () => {
-            await remountConnection(connectionId);
-            remountContainer.remove();
-        });
-
-        document.getElementById('dismissRemountBtn').addEventListener('click', () => {
-            remountContainer.remove();
-        });
-
-        // Auto-dismiss after 15 seconds
-        setTimeout(() => {
-            if (remountContainer.parentNode) {
-                remountContainer.remove();
-            }
-        }, 15000);
-    }
-
-    // Function to remount a connection
-    async function remountConnection(connectionId, oldLabel) {
-        try {
-            showStatus('Remounting connection...', 'info');
-            
-            const result = await window.api.remountUpdatedConnection(connectionId, oldLabel);
-            
-            if (result.success) {
-                showStatus('Connection remounted successfully with updated details', 'success');
-                
-                // Refresh mount status
-                if (selectedConnection) {
-                    const mountStatus = await window.api.getConnectionMountStatus(connectionId);
-                    updateMountStatusDisplay(mountStatus);
-                }
-            } else {
-                showStatus(result.message || 'Failed to remount connection', 'error');
-            }
-            
-        } catch (error) {
-            showStatus('Failed to remount connection', 'error');
-            console.error('Remount error:', error);
         }
     }
 });

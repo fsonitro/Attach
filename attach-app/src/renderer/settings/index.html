@@ -96,7 +96,7 @@
                 <div class="setting-item">
                     <div class="setting-info">
                         <label>View Saved Connections</label>
-                        <p class="setting-description">Select a connection to view, edit, or delete</p>
+                        <p class="setting-description">Select a connection to view its details (read-only mode)</p>
                     </div>
                     <div class="setting-control">
                         <select id="viewSavedConnections" class="connections-dropdown" disabled>
@@ -108,12 +108,7 @@
                 <!-- Connection Details Panel (hidden by default) -->
                 <div id="connectionManagementPanel" class="connection-management-panel" style="display: none;">
                     <div class="connection-details">
-                        <h3>Connection Details</h3>
-                        
-                        <!-- Edit Warning Notice -->
-                        <div id="editWarningNotice" class="edit-warning" style="display: none;">
-                            <p><strong>⚠️ Note:</strong> Changes to Share Path or Username will require remounting to take effect. Label changes will be reflected immediately on remount.</p>
-                        </div>
+                        <h3>Connection Details (Read Only)</h3>
                         
                         <div class="form-group">
                             <label for="editConnectionLabel">Label:</label>
@@ -137,16 +132,25 @@
                             </label>
                         </div>
                         
+                        <!-- Connection Metadata -->
+                        <div class="connection-metadata">
+                            <div class="metadata-item">
+                                <label>Last Used:</label>
+                                <span id="editConnectionLastUsed">Never</span>
+                            </div>
+                            <div class="metadata-item">
+                                <label>Created:</label>
+                                <span id="editConnectionCreated">Unknown</span>
+                            </div>
+                        </div>
+                        
                         <!-- Mount Status Display -->
                         <div id="connectionMountStatus" class="mount-status" style="display: none;">
                             <!-- Mount status will be populated by JavaScript -->
                         </div>
                         
-                        <div class="connection-actions">
-                            <button type="button" id="editConnectionBtn" class="btn-secondary">Edit</button>
-                            <button type="button" id="saveConnectionBtn" class="btn-primary" style="display: none;">Save</button>
-                            <button type="button" id="cancelEditBtn" class="btn-secondary" style="display: none;">Cancel</button>
-                            <button type="button" id="deleteConnectionBtn" class="action-btn danger">Delete</button>
+                        <div class="readonly-notice">
+                            <p><em>ℹ️ Connection details are read-only in this view. To modify connections, use the main Attach window.</em></p>
                         </div>
                     </div>
                 </div>
