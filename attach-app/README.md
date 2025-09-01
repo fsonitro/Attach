@@ -2,8 +2,6 @@
 
 A **macOS Electron desktop application** that runs as a **menu bar (tray) app** for mounting and browsing SMB network shares.
 
-![Attach App](assets/icons/tray-icon-template.png)
-
 ## ✨ Features
 
 ### 🔧 **Core Functionality**
@@ -92,7 +90,7 @@ A **macOS Electron desktop application** that runs as a **menu bar (tray) app** 
 4. **Unmount**: Use individual unmount options or "Unmount All"
 
 ### SMB Path Examples
-- `smb://192.168.1.100/shared`
+- `smb://<IP>/shared`
 - `//myserver.local/documents`
 - `smb://workstation/nas`
 

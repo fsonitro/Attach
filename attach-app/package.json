@@ -17,7 +17,7 @@
     "shares",
     "mount"
   ],
-  "author": "Your Name",
+  "author": "Felipe",
   "license": "MIT",
   "dependencies": {
     "electron-store": "^8.2.0",
